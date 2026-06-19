@@ -49,10 +49,16 @@ impl Tensor {
     }
 
     pub fn permute(&self, axes: &[usize]) -> Tensor {
+        assert_eq!(axes.len(), self.shape.len(), "axes length must match tensor rank");
+        
+        let mut seen = vec![false; self.shape.len()];
         let mut new_shape: Vec<usize> = Vec::new();
         let mut new_strides: Vec<usize> = Vec::new();
 
         for &axis in axes {
+            assert!(axis < self.shape.len(), "axis out of bound");
+            assert!(!seen[axis], "axes must form a permutation");
+            seen[axis] = true;
             new_shape.push(self.shape[axis]);
             new_strides.push(self.strides[axis]);
         }
@@ -158,5 +164,62 @@ mod tests {
         assert_eq!(result.get(&[0, 0]), 2.0);
         assert_eq!(result.get(&[0, 1]), 8.0); // was 4.0 before map
         assert_eq!(result.get(&[1, 0]), 4.0); // was 2.0 before map
+    }
+
+    #[test]
+    fn test_3d_indexing_matches_rm_layout() {
+        let shape = vec![32, 32, 3];
+        let size: usize = shape.iter().product();
+        let data: Vec<f32> = (0..size).map(|x| x as f32).collect();
+        let tensor = Tensor::from_vec(shape, data);
+
+        assert_eq!(tensor.get(&[0, 0, 0]), 0.0);
+        assert_eq!(tensor.get(&[0, 0, 1]), 1.0);
+        assert_eq!(tensor.get(&[0, 1, 0]), 3.0);
+        assert_eq!(tensor.get(&[1, 0, 0]), 96.0);
+        assert_eq!(tensor.get(&[31, 31, 2]), (size - 1) as f32);
+    }
+
+    #[test]
+    fn test_3d_permute_preserves_vals() {
+        let shape = vec![32, 32, 3];
+        let size: usize = shape.iter().product();
+        let data: Vec<f32> = (0..size).map(|x| x as f32).collect();
+        let tensor = Tensor::from_vec(shape, data);
+        let channel_first = tensor.permute(&[2, 0, 1]);
+
+        assert_eq!(channel_first.shape, vec![3, 32, 32]);
+        assert_eq!(channel_first.get(&[0, 0, 0]), tensor.get(&[0, 0, 0]));
+        assert_eq!(channel_first.get(&[1, 0, 0]), tensor.get(&[0, 0, 1]));
+        assert_eq!(channel_first.get(&[2, 31, 31]), tensor.get(&[31, 31, 2]));
+    }
+
+    #[test]
+    fn test_map_over_permuted_3d_tensor_respects_view_strides() {
+        let shape = vec![32, 32, 3];
+        let size: usize = shape.iter().product();
+        let data: Vec<f32> = (0..size).map(|x| x as f32).collect();
+        let tensor = Tensor::from_vec(shape, data);
+        let permuted = tensor.permute(&[2, 0, 1]);
+        let mapped = permuted.map(|x| x + 0.5);
+
+        assert_eq!(mapped.shape, vec![3, 32, 32]);
+        assert_eq!(mapped.get(&[0, 0, 0]), tensor.get(&[0, 0, 0]) + 0.5);
+        assert_eq!(mapped.get(&[1, 0, 0]), tensor.get(&[0, 0, 1]) + 0.5);
+        assert_eq!(mapped.get(&[2, 31, 31]), tensor.get(&[31, 31, 2]) + 0.5);   
+    }
+
+    #[test]
+    #[should_panic(expected = "axes length must match tensor rank")]
+    fn test_permute_panics_on_rank_mismatch() {
+        let tensor = Tensor::new(vec![2, 3, 4]);
+        tensor.permute(&[0, 1]);
+    }
+
+    #[test]
+    #[should_panic(expected = "axes must form a permutation")]
+    fn test_permute_panics_on_duplicate_axes() {
+        let tensor = Tensor::new(vec![2, 3, 4]);
+        tensor.permute(&[0, 0, 2]);
     }
 }

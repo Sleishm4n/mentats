@@ -3,6 +3,7 @@ use crate::tensor::Tensor;
 pub mod activation;
 pub mod linear;
 pub mod network;
+pub mod init;
 pub mod softmax;
 
 pub trait Layer {

@@ -28,8 +28,11 @@ impl Tensor {
     }
 
     fn flat(&self, index: &[usize]) -> usize {
+        assert_eq!(index.len(), self.shape.len(), "index rank must match tensor rank");
+
         let mut result: usize = 0;
         for i in 0..index.len() {
+            assert!(index[i] < self.shape[i], "index out of bounds for axis {i}");
             result += index[i] * self.strides[i];
         }
 
@@ -52,5 +55,9 @@ impl Tensor {
         Tensor {
             shape, strides, data
         }
+    }
+    
+    pub fn display(&self) {
+        println!("Tensor(shape={:?}, strides={:?}, data={:?})", self.shape, self.strides, self.data);
     }
 }

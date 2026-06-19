@@ -1,9 +1,11 @@
-use rust_ml::matrix::Matrix;
+use std::vec;
+
 use rust_ml::nn::activation::{relu, sigmoid, tanh};
 use rust_ml::nn::linear::{LinearLayer};
+use rust_ml::tensor::Tensor;
 
 fn main() {
-    let w = Matrix::rand_range(3, 3, -10.0, 10.0);
+    let w = Tensor::rand_range(vec![3, 3], -10.0, 10.0);
     let mut layer = LinearLayer::new_rand(3, 1);
 
     println!("Original Matrix:");
@@ -27,7 +29,7 @@ fn main() {
     tanh_res.display();
 
     println!("Input");
-    let input = Matrix::rand_range(3, 1, -1.0, 1.0);
+    let input = Tensor::rand_range(vec![3,1], -1.0, 1.0);
     input.display();
 
     println!("After Forward:");

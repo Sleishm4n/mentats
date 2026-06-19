@@ -1,4 +1,4 @@
-use crate::{nn::Layer, tensor::Tensor};
+use crate::{nn::Layer, tensor::Tensor, nn::init::{kaiming_normal, xavier_uniform}};
 
 #[derive(Clone)]
 pub struct LinearLayer {
@@ -26,7 +26,19 @@ impl LinearLayer {
 
     pub fn new_rand(in_features: usize, out_features: usize) -> LinearLayer {
         LinearLayer {
-            weight: Tensor::rand_range(vec![out_features, in_features], -0.01, 0.01),
+            weight: xavier_uniform(out_features, in_features),
+            bias: Tensor::new(vec![out_features, 1]),
+            in_features,
+            out_features,
+            input: None,
+            d_weight: None,
+            d_bias: None,
+        }
+    }
+
+    pub fn new_kaiming(in_features: usize, out_features: usize) -> LinearLayer {
+        LinearLayer {
+            weight: kaiming_normal(in_features, out_features),
             bias: Tensor::new(vec![out_features, 1]),
             in_features,
             out_features,
