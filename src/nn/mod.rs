@@ -4,6 +4,8 @@ pub mod activation;
 pub mod linear;
 pub mod network;
 pub mod init;
+pub mod reshape;
+pub mod flatten;
 pub mod softmax;
 
 pub trait Layer {
