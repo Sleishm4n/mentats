@@ -1,4 +1,9 @@
-use crate::{nn::Layer, tensor::Tensor};
+use std::io::{self, Read, Write};
+
+use crate::{
+    nn::Layer, tensor::Tensor,
+    utils::model_io::{write_u8, TAG_SOFTMAX},
+};
 
 pub struct SoftmaxLayer {
     pub input: Option<Tensor>,
@@ -7,6 +12,10 @@ pub struct SoftmaxLayer {
 impl SoftmaxLayer {
     pub fn new() -> Self {
         SoftmaxLayer { input: None }
+    }
+
+    pub fn load(_reader: &mut dyn Read) -> io::Result<SoftmaxLayer> {
+        Ok(SoftmaxLayer::new())
     }
 }
 
@@ -34,4 +43,8 @@ impl Layer for SoftmaxLayer {
         vec![]
     }
     fn set_params(&mut self, _params: Vec<Tensor>) {}
+
+    fn save(&self, writer: &mut dyn Write) -> io::Result<()> {
+        write_u8(writer, TAG_SOFTMAX)
+    }
 }

@@ -1,4 +1,10 @@
-use crate::{nn::Layer, tensor::Tensor, nn::init::{kaiming_normal, xavier_uniform}};
+use std::io::{self, Read, Write};
+
+use crate::{
+    nn::Layer, tensor::Tensor,
+    nn::init::{kaiming_normal, xavier_uniform},
+    utils::model_io::{read_tensor, write_tensor, write_u8, TAG_LINEAR},
+};
 
 #[derive(Clone)]
 pub struct LinearLayer {
@@ -63,6 +69,22 @@ impl LinearLayer {
     pub fn get_weights_and_bias(&self) -> (&Tensor, &Tensor) {
         (&self.weight, &self.bias)
     }
+
+    pub fn load(reader: &mut dyn Read) -> io::Result<LinearLayer> {
+        let weight = read_tensor(reader)?;
+        let bias = read_tensor(reader)?;
+        let out_features = weight.shape[0];
+        let in_features = weight.shape[1];
+        Ok(LinearLayer {
+            weight,
+            bias,
+            in_features,
+            out_features,
+            input: None,
+            d_weight: None,
+            d_bias: None,
+        })
+    }
 }
 
 impl Layer for LinearLayer {
@@ -95,6 +117,13 @@ impl Layer for LinearLayer {
     fn set_params(&mut self, params: Vec<Tensor>) {
         self.weight = params[0].clone();
         self.bias = params[1].clone();
+    }
+
+    fn save(&self, writer: &mut dyn Write) -> io::Result<()> {
+        write_u8(writer, TAG_LINEAR)?;
+        write_tensor(writer, &self.weight)?;
+        write_tensor(writer, &self.bias)?;
+        Ok(())
     }
 }
 

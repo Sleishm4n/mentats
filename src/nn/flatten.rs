@@ -1,4 +1,9 @@
-use crate::{nn::Layer, tensor::Tensor};
+use std::io::{self, Read, Write};
+
+use crate::{
+    nn::Layer, tensor::Tensor,
+    utils::model_io::{write_u8, TAG_FLATTEN},
+};
 
 pub struct FlattenLayer {
     input_shape: Option<Vec<usize>>,
@@ -7,6 +12,11 @@ pub struct FlattenLayer {
 impl FlattenLayer {
     pub fn new() -> Self {
         Self { input_shape: None }
+    }
+
+    /// input_shape is just forward-pass cache, not durable state.
+    pub fn load(_reader: &mut dyn Read) -> io::Result<FlattenLayer> {
+        Ok(FlattenLayer::new())
     }
 }
 
@@ -41,6 +51,10 @@ impl Layer for FlattenLayer {
 
     fn get_grads(&self) -> Vec<Tensor> {
         vec![]
+    }
+
+    fn save(&self, writer: &mut dyn Write) -> io::Result<()> {
+        write_u8(writer, TAG_FLATTEN)
     }
 }
 

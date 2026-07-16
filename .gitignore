@@ -32,3 +32,4 @@ Thumbs.db
 # MNIST data files (download separately — see README)
 data/mnist/*.idx3-ubyte
 data/mnist/*.idx1-ubyte
+data/svhn/

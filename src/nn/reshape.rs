@@ -1,4 +1,9 @@
-use crate::{nn::Layer, tensor::Tensor};
+use std::io::{self, Read, Write};
+
+use crate::{
+    nn::Layer, tensor::Tensor,
+    utils::model_io::{read_shape, write_shape, write_u8, TAG_RESHAPE},
+};
 
 pub struct ReshapeLayer {
     pub output_shape: Vec<usize>,
@@ -12,6 +17,13 @@ impl ReshapeLayer {
             output_shape,
             input_shape: None,
         }
+    }
+
+    /// output_shape is the one bit of config this layer needs to
+    /// reconstruct; input_shape is just forward-pass cache.
+    pub fn load(reader: &mut dyn Read) -> io::Result<ReshapeLayer> {
+        let output_shape = read_shape(reader)?;
+        Ok(ReshapeLayer::new(output_shape))
     }
 }
 
@@ -53,6 +65,12 @@ impl Layer for ReshapeLayer {
 
     fn get_grads(&self) -> Vec<Tensor> {
         vec![]
+    }
+
+    fn save(&self, writer: &mut dyn Write) -> io::Result<()> {
+        write_u8(writer, TAG_RESHAPE)?;
+        write_shape(writer, &self.output_shape)?;
+        Ok(())
     }
 }
 

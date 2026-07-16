@@ -7,5 +7,5 @@ edition = "2021"
 rand = "0.8"
 
 [[bin]]
-name = "matrix"
-path = "src/tensor/matrix.rs"
+name = "tensor"
+path = "src/tensor/tensor.rs"

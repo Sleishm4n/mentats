@@ -61,3 +61,8 @@ impl Tensor {
         println!("Tensor(shape={:?}, strides={:?}, data={:?})", self.shape, self.strides, self.data);
     }
 }
+
+#[allow(dead_code)]
+fn main() {
+    println!("tensor crate main");
+}
