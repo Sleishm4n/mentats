@@ -8,6 +8,7 @@ pub mod init;
 pub mod reshape;
 pub mod flatten;
 pub mod softmax;
+pub mod sampling;
 
 pub trait Layer {
     fn forward_pass(&mut self, input: &Tensor) -> Tensor;

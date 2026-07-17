@@ -1,0 +1,24 @@
+use crate::tensor::Tensor;
+
+pub fn kl_divergence(mu: &Tensor, log_var: &Tensor) -> f32 {
+    assert_eq!(mu.shape, log_var.shape, "mu and lof_var must have the same shape");
+
+    let batch_size = if mu.shape.len() > 1 { mu.shape[1] } else { 1 }; 
+    let mut total_kl: f32 = 0.0;
+
+    for i in 0..mu.data.len() {
+        let m = mu.data[i];
+        let lv = log_var.data[i];
+        let var = lv.exp();
+
+        total_kl += -0.5 * (1.0 + lv - m * m - var);
+    }
+
+    total_kl / batch_size as f32
+}
+
+pub fn d_kl_divergence_mu(mu: &Tensor) -> Tensor {
+    let batch_size = if mu.shape.len() > 1 { mu.shape[1] } else { 1 };
+    mu.map(|m| m / batch_size as f32) 
+}
+

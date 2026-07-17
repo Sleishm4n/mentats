@@ -2,7 +2,7 @@ use std::io::{self, Read, Write};
 
 use crate::nn::{
     activation::ActivationLayer, flatten::FlattenLayer, linear::LinearLayer,
-    reshape::ReshapeLayer, softmax::SoftmaxLayer, Layer,
+    reshape::ReshapeLayer, sampling::GaussianSampler, softmax::SoftmaxLayer, Layer,
 };
 use crate::tensor::Tensor;
 
@@ -15,6 +15,7 @@ pub const TAG_ACTIVATION: u8 = 1;
 pub const TAG_SOFTMAX: u8 = 2;
 pub const TAG_FLATTEN: u8 = 3;
 pub const TAG_RESHAPE: u8 = 4;
+pub const TAG_SAMPLER: u8 = 5;
 
 // ---- primitive helpers -------------------------------------------------
 
@@ -107,6 +108,7 @@ pub fn load_layer(reader: &mut dyn Read) -> io::Result<Box<dyn Layer>> {
         TAG_SOFTMAX => Ok(Box::new(SoftmaxLayer::load(reader)?)),
         TAG_FLATTEN => Ok(Box::new(FlattenLayer::load(reader)?)),
         TAG_RESHAPE => Ok(Box::new(ReshapeLayer::load(reader)?)),
+        TAG_SAMPLER => Ok(Box::new(GaussianSampler::load(reader)?)),
         other => Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("unknown layer tag: {other}"),
