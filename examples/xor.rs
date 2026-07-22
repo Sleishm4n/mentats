@@ -1,5 +1,5 @@
 use rust_ml::loss::mse::{d_mse, mse};
-use rust_ml::nn::activation::{d_sigmoid, sigmoid, ActivationLayer};
+use rust_ml::nn::activation::{ActivationKind::Sigmoid, ActivationLayer};
 use rust_ml::nn::linear::LinearLayer;
 use rust_ml::nn::network::Network;
 use rust_ml::optimiser::adam::Adam;
@@ -8,7 +8,7 @@ use rust_ml::tensor::Tensor;
 fn main() {
     let mut network = Network::new(vec![
         Box::new(LinearLayer::new_rand(2, 2)),
-        Box::new(ActivationLayer::new(sigmoid, d_sigmoid)),
+        Box::new(ActivationLayer::new(Sigmoid)),
         Box::new(LinearLayer::new_rand(2, 1)),
     ]);
     let mut optimiser = Adam::new(0.001, 0.9, 0.999, 1e-8);

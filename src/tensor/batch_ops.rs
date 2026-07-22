@@ -14,22 +14,84 @@ impl Tensor {
 
         assert_eq!(n, other.shape[0], "dimension mismatch for matmul");
 
-        let result_shape = vec![batch_size, m, p];
-        let mut result = Tensor::new(result_shape);
+        let other_flat: Vec<f32> = (0..n).flat_map(|k| (0..p).map(move |j| other.get(&[k, j]))).collect();
+
+        let mut result = Tensor::new(vec![batch_size, m, p]);
 
         for b in 0..batch_size {
             for i in 0..m {
-                for k in 0..n {
-                    let a = self.get(&[b, i, k]);
+                let self_row: Vec<f32> = (0..n).map(|k| self.get(&[b, i, k])).collect();
+                for j in 0..p {
+                    let mut sum: f32 = 0.0;
 
-                    for j in 0..p {
-                        let prev = result.get(&[b, i, j]);
-                        result.set(&[b, i, j], prev + a * other.get(&[k, j]));
+                    for k in 0..n {
+                        sum += self_row[k] * other_flat[k * p + j];
                     }
+                    result.set(&[b, i, j], sum);
                 }
             }
         }
 
+        result
+    }
+
+    pub fn matmul_batched_broadcast(&self, other: &Tensor) -> Tensor {
+        assert!(
+            self.shape.len() == 2 && other.shape.len() == 3,
+            "broadcast matmul expects [m, n] @ [batch, n, p] -> [batch, m, p]"
+        );
+
+        let batch_size = other.shape[0];
+        let m = self.shape[0];
+        let n = self.shape[1];
+        let p = other.shape[2];
+
+        assert_eq!(n, other.shape[1], "dimension mismatch for matmul");
+
+        let self_rows: Vec<Vec<f32>> = (0..m).map(|i| (0..n).map(move |k| self.get(&[i, k])).collect()).collect();
+
+        let mut result = Tensor::new(vec![batch_size, m, p]);
+
+        for b in 0..batch_size {
+            let other_flat: Vec<f32> = (0..n).flat_map(|k| (0..p).map(move |j| other.get(&[b, k, j]))).collect();
+            for i in 0..m {
+                
+                for j in 0..p {
+                    let mut sum = 0.0;
+
+                    for k in 0..n {
+                        sum += self_rows[i][k] * other_flat[k * p +j];
+                    }
+                    result.set(&[b, i, j], sum);
+                }
+            }
+        }
+
+        result
+    }
+
+    pub fn sum_batch(&self) -> Tensor {
+        assert!(self.shape.len() >= 1, "tensor must have at least 1 dimension");
+
+        if self.shape.len() == 1 {
+            let sum = self.data.iter().sum();
+            return Tensor::from_vec(vec![1], vec![sum]);
+        }
+
+        let batch_size = self.shape[0];
+        let remaining_shape = self.shape[1..].to_vec();
+        let remaining_size: usize = remaining_shape.iter().product();
+
+        let mut result = Tensor::new(remaining_shape);
+        let mut result_data = vec![0.0; remaining_size];
+
+        for b in 0..batch_size {
+            for i in 0..remaining_size {
+                result_data[i] += self.data[b * remaining_size + i];
+            }
+        }
+
+        result.data = result_data;
         result
     }
 }

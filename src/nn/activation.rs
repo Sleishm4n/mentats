@@ -38,49 +38,59 @@ pub fn d_tanh(x: f32) -> f32 {
     1.0 - tanh(x).powi(2)
 }
 
-pub struct ActivationLayer {
-    pub function: fn(f32) -> f32,
-    pub derivative: fn(f32) -> f32,
-    pub input: Option<Tensor>,
-}
-
 const ACT_RELU: u8 = 0;
 const ACT_SIGMOID: u8 = 1;
 const ACT_TANH: u8 = 2;
 
-impl ActivationLayer {
-    pub fn new(function: fn(f32) -> f32, derivative: fn(f32) -> f32) -> Self {
-        ActivationLayer {
-            function,
-            derivative,
-            input: None,
+#[derive(Clone, Copy, PartialEq)]
+pub enum ActivationKind {
+    Relu,
+    Sigmoid,
+    Tanh,
+}
+
+impl ActivationKind {
+    fn id(self) -> u8 {
+        match self {
+            ActivationKind::Relu => ACT_RELU,
+            ActivationKind::Sigmoid => ACT_SIGMOID,
+            ActivationKind::Tanh => ACT_TANH,
         }
     }
 
-    fn activation_id(&self) -> io::Result<u8> {
-        // fn pointers compare by address, so this correctly identifies
-        // which named activation was used to construct this layer.
-        if self.function as usize == relu as *const () as usize {
-            Ok(ACT_RELU)
-        } else if self.function as usize == sigmoid as *const () as usize {
-            Ok(ACT_SIGMOID)
-        } else if self.function as usize == tanh as *const () as usize {
-            Ok(ACT_TANH)
-        } else {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "cannot save ActivationLayer: unrecognized activation function \
-                 (only relu/sigmoid/tanh are supported)",
-            ))
+    fn function(self) -> fn(f32) -> f32 {
+        match self {
+            ActivationKind::Relu => relu,
+            ActivationKind::Sigmoid => sigmoid,
+            ActivationKind::Tanh => tanh,
         }
+    }
+
+    fn derivative(self) -> fn(f32) -> f32 {
+        match self {
+            ActivationKind::Relu => d_relu,
+            ActivationKind::Sigmoid => d_sigmoid,
+            ActivationKind::Tanh => d_tanh,
+        }
+    }
+}
+
+pub struct ActivationLayer {
+    pub kind: ActivationKind,
+    pub input: Option<Tensor>,
+}
+
+impl ActivationLayer {
+    pub fn new(kind: ActivationKind) -> Self {
+        ActivationLayer { kind, input: None }
     }
 
     pub fn load(reader: &mut dyn Read) -> io::Result<ActivationLayer> {
         let id = read_u8(reader)?;
-        let (function, derivative): (fn(f32) -> f32, fn(f32) -> f32) = match id {
-            ACT_RELU => (relu, d_relu),
-            ACT_SIGMOID => (sigmoid, d_sigmoid),
-            ACT_TANH => (tanh, d_tanh),
+        let kind = match id {
+            ACT_RELU => ActivationKind::Relu,
+            ACT_SIGMOID => ActivationKind::Sigmoid,
+            ACT_TANH => ActivationKind::Tanh,
             other => {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
@@ -88,23 +98,19 @@ impl ActivationLayer {
                 ))
             }
         };
-        Ok(ActivationLayer {
-            function,
-            derivative,
-            input: None,
-        })
+        Ok(ActivationLayer { kind, input: None })
     }
 }
 
 impl Layer for ActivationLayer {
     fn forward_pass(&mut self, input: &Tensor) -> Tensor {
         self.input = Some(input.clone());
-        input.map(self.function)
+        input.map(self.kind.function())
     }
 
     fn backward_pass(&mut self, d_output: &Tensor) -> Tensor {
         let input = self.input.as_ref().unwrap();
-        input.map(self.derivative).zip_map(d_output, |d, g| d * g)
+        input.map(self.kind.derivative()).zip_map(d_output, |d, g| d * g)
     }
 
     fn get_params(&self) -> Vec<Tensor> {
@@ -117,7 +123,7 @@ impl Layer for ActivationLayer {
 
     fn save(&self, writer: &mut dyn Write) -> io::Result<()> {
         write_u8(writer, TAG_ACTIVATION)?;
-        write_u8(writer, self.activation_id()?)?;
+        write_u8(writer, self.kind.id())?;
         Ok(())
     }
 }

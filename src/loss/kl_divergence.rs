@@ -22,3 +22,7 @@ pub fn d_kl_divergence_mu(mu: &Tensor) -> Tensor {
     mu.map(|m| m / batch_size as f32) 
 }
 
+pub fn d_kl_divergence_log_var(log_var: &Tensor) -> Tensor {
+    let batch_size = if log_var.shape.len() > 1 { log_var.shape[1] } else { 1 };
+    log_var.map(|lv| 0.5 * (lv.exp() - 1.0) / batch_size as f32)
+}

@@ -1,8 +1,9 @@
-use std::io::{self, Read, Write};
+use std::{io::{self, Read, Write}, vec};
 
 use crate::{
-    nn::Layer, tensor::Tensor,
     nn::init::{kaiming_normal, xavier_uniform},
+    nn::Layer,
+    tensor::Tensor,
     utils::model_io::{read_tensor, write_tensor, write_u8, TAG_LINEAR},
 };
 
@@ -32,7 +33,7 @@ impl LinearLayer {
 
     pub fn new_rand(in_features: usize, out_features: usize) -> LinearLayer {
         LinearLayer {
-            weight: xavier_uniform(out_features, in_features),
+            weight: xavier_uniform(in_features, out_features),
             bias: Tensor::new(vec![out_features, 1]),
             in_features,
             out_features,
@@ -56,7 +57,34 @@ impl LinearLayer {
 
     pub fn forward(&mut self, input: &Tensor) -> Tensor {
         self.input = Some(input.clone());
-        self.weight.matmul(input).add(&self.bias)
+
+        match input.shape.len() {
+            2 => {
+                self.weight.matmul(input).add(&self.bias)
+            }
+            3 => {
+                let batched_matmul_result = self.weight.matmul_batched_broadcast(input);
+                let batch_size = input.shape[0];
+
+                let bias_broadcasted = self._broadcast_bias_batched(&self.bias, batch_size);
+                batched_matmul_result.add(&bias_broadcasted)
+            }
+            _ => panic!("LinearLayer only supports 2D or 3D inputs"),
+        }
+    }
+
+    fn _broadcast_bias_batched(&self, bias: &Tensor, batch_size: usize) -> Tensor {
+        assert_eq!(bias.shape.len(), 2, "bias must be 2D");
+
+        let out_feat = bias.shape[0];
+        let mut broadcasted = Tensor::new(vec![batch_size, out_feat, 1]);
+
+        for b in 0..batch_size {
+            for o in 0..out_feat {
+                broadcasted.set(&[b, o, 0], bias.get(&[o, 0]));
+            }
+        }
+        broadcasted
     }
 
     pub fn backward(&self, d_output: &Tensor) -> (Tensor, Tensor, Tensor) {
@@ -65,7 +93,7 @@ impl LinearLayer {
         let d_x = self.weight.transpose().matmul(d_output);
         (d_w, d_b, d_x)
     }
-    
+
     pub fn get_weights_and_bias(&self) -> (&Tensor, &Tensor) {
         (&self.weight, &self.bias)
     }
@@ -93,10 +121,45 @@ impl Layer for LinearLayer {
     }
 
     fn backward_pass(&mut self, d_output: &Tensor) -> Tensor {
-        self.d_weight = Some(d_output.matmul(&self.input.as_ref().unwrap().transpose()));
-        self.d_bias = Some(d_output.clone());
-        let d_x = self.weight.transpose().matmul(d_output);
-        d_x
+        let input = self.input.as_ref().unwrap();
+
+        match input.shape.len() {
+            2 => {
+                // standard backwards pass
+                self.d_weight = Some(d_output.matmul(&self.input.as_ref().unwrap().transpose()));
+                self.d_bias = Some(d_output.clone());
+                let d_x = self.weight.transpose().matmul(d_output);
+                d_x
+            }
+            3 => {
+                // batched input
+                let batch_size = input.shape[0];
+
+                let mut d_w_batched =
+                    Tensor::new(vec![batch_size, self.out_features, input.shape[1]]);
+                for b in 0..batch_size {
+                    let d_out_b = Tensor::from_vec(
+                        vec![self.out_features, 1],
+                        d_output.data[b * self.out_features..(b + 1) * self.out_features].to_vec(),
+                    );
+                    let input_b = Tensor::from_vec(vec![input.shape[1], 1], input.data[b * input.shape[1]..(b+1) * input.shape[1]].to_vec());
+                    let grad = d_out_b.matmul(&input_b.transpose());
+
+                    for i in 0..self.out_features {
+                        for j in 0..input.shape[1] {
+                            d_w_batched.set(&[b, i, j], grad.get(&[i, j]));
+                        }
+                    }
+                }
+                self.d_weight = Some(d_w_batched.sum_batch());
+
+                self.d_bias = Some(d_output.sum_batch());
+
+                let d_x = self.weight.transpose().matmul_batched_broadcast(d_output);
+                d_x
+            }
+            _ => panic!("LinearLayer only supports 2D or 3D inputs"),
+        }
     }
 
     fn get_params(&self) -> Vec<Tensor> {
