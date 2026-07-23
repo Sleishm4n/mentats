@@ -1,11 +1,12 @@
 # rust-ml 
 
-A neural network built from scratch in Rust
+A neural network library built from scratch in Rust, designed to understand deep learning fundamentals through implementation.
 
-The goal is to understand how they are implemented and how they fundamentally work
-This involves understanding every operation from the maths to the memory layout
+## Overview 
 
-At the current stage, the network solves MNIST at 97% accurarcy 
+rust-ml is an educational framework implementing core neural network operations without external libraries. Every operation is implemented from first principles. 
+
+**Current Milestone:** MNIST classification at **97.43%** accuracy with a simple feed-forward network. 
 
 ---
 
