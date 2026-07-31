@@ -24,3 +24,14 @@ pub fn d_cross_entropy(output: &Tensor, target: &Tensor) -> Tensor {
 
     probs.zip_map(target, |p, y| p - y)
 }
+
+pub fn binary_cross_entropy(logits: &Tensor, target: &Tensor) -> f32 {
+    let n = logits.data.len() as f32;
+    let mut loss: f32 = 0.0;
+
+    for (logit, t) in logits.data.iter().zip(target.data.iter()) {
+        let p = (1.0 / (1.0 + (-logit).exp())).clamp(1e-7, 1.0 - 1e-7);
+        loss += -(t * p.ln() + (1.0 - t) * (1.0 - p).ln());
+    }
+    loss / n
+}

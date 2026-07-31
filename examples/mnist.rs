@@ -35,6 +35,8 @@ fn main() {
         let mut batch_iterator = BatchIterator::new(images.len(), 32, true);
 
         let start = Instant::now();
+        let mut forward_time = std::time::Duration::ZERO;
+        let mut backward_time = std::time::Duration::ZERO;
         while let Some(batch_indicies) = batch_iterator.next_batch() {
             let mut batch_images = Vec::new();
             let mut batch_labels = Vec::new();
@@ -45,7 +47,9 @@ fn main() {
 
             let batched_input = stack_tensors(&batch_images);
 
+            let t0 = Instant::now();
             let batched_output = network.forward(&batched_input);
+            forward_time += t0.elapsed();
 
             let mut batch_loss = 0.0;
             let batched_output_sliced = slice_batch(
@@ -79,10 +83,17 @@ fn main() {
                 d_outs.push(d_out.scale(1.0 / batch_indicies.len() as f32));
             }
 
+            let t1 = Instant::now();
             let d_out_batched = stack_tensors(&d_outs);
             network.backward(&d_out_batched);
             network.update(&mut optimiser);
+            backward_time += t1.elapsed();
         }
+
+        println!(
+            "forward: {:?}, backward+update: {:?}",
+            forward_time, backward_time
+        );
 
         println!(
             "Epoch {epoch}: loss = {:.4}, accuracy = {:.2}, elapsed time = {:?}",
@@ -115,6 +126,8 @@ fn main() {
 
     let checkpoint_path = "checkpoints/mnist_classifier.rmlc";
     create_dir_all("checkpoints").expect("failed to create checkpoints directory");
-    network.save(checkpoint_path).expect("failed to save classifer checkpoint");
+    network
+        .save(checkpoint_path)
+        .expect("failed to save classifer checkpoint");
     println!("Saved MNIST classifer checkpoint to {}", checkpoint_path);
 }

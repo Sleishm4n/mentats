@@ -33,3 +33,6 @@ Thumbs.db
 data/mnist/*.idx3-ubyte
 data/mnist/*.idx1-ubyte
 data/svhn/
+
+# VAE outputs
+outputs/

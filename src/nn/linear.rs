@@ -1,4 +1,7 @@
-use std::{io::{self, Read, Write}, vec};
+use std::{
+    io::{self, Read, Write},
+    vec,
+};
 
 use crate::{
     nn::init::{kaiming_normal, xavier_uniform},
@@ -59,9 +62,7 @@ impl LinearLayer {
         self.input = Some(input.clone());
 
         match input.shape.len() {
-            2 => {
-                self.weight.matmul(input).add(&self.bias)
-            }
+            2 => self.weight.matmul(input).add(&self.bias),
             3 => {
                 let batched_matmul_result = self.weight.matmul_batched_broadcast(input);
                 let batch_size = input.shape[0];
@@ -132,27 +133,29 @@ impl Layer for LinearLayer {
                 d_x
             }
             3 => {
-                // batched input
+                // batched inputs
                 let batch_size = input.shape[0];
+                let in_features = input.shape[1];
 
-                let mut d_w_batched =
-                    Tensor::new(vec![batch_size, self.out_features, input.shape[1]]);
+                let mut d_w_acc = vec![0.0f32; self.out_features * in_features];
+
                 for b in 0..batch_size {
-                    let d_out_b = Tensor::from_vec(
-                        vec![self.out_features, 1],
-                        d_output.data[b * self.out_features..(b + 1) * self.out_features].to_vec(),
-                    );
-                    let input_b = Tensor::from_vec(vec![input.shape[1], 1], input.data[b * input.shape[1]..(b+1) * input.shape[1]].to_vec());
-                    let grad = d_out_b.matmul(&input_b.transpose());
+                    let d_out_b =
+                        &d_output.data[b * self.out_features..(b + 1) * self.out_features];
+                    let in_b = &input.data[b * in_features..(b + 1) * in_features];
 
                     for i in 0..self.out_features {
-                        for j in 0..input.shape[1] {
-                            d_w_batched.set(&[b, i, j], grad.get(&[i, j]));
+                        let g = d_out_b[i];
+                        for j in 0..in_features {
+                            d_w_acc[i * in_features + j] += g * in_b[j];
                         }
                     }
                 }
-                self.d_weight = Some(d_w_batched.sum_batch());
 
+                self.d_weight = Some(Tensor::from_vec(
+                    vec![self.out_features, in_features],
+                    d_w_acc,
+                ));
                 self.d_bias = Some(d_output.sum_batch());
 
                 let d_x = self.weight.transpose().matmul_batched_broadcast(d_output);
