@@ -10,6 +10,12 @@ pub struct FlattenLayer {
     input_shape: Option<Vec<usize>>,
 }
 
+impl Default for FlattenLayer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FlattenLayer {
     pub fn new() -> Self {
         Self { input_shape: None }

@@ -35,7 +35,7 @@ impl BatchIterator {
     }
 
     pub fn num_batches(&self) -> usize {
-        (self.indices.len() + self.batch_size - 1) / self.batch_size
+        self.indices.len().div_ceil(self.batch_size)
     }
 
     pub fn reset(&mut self, shuffle: bool) {
@@ -72,7 +72,7 @@ pub fn stack_tensors(tensors: &[Tensor]) -> Tensor {
 }
 
 pub fn slice_batch(tensor: &Tensor, indices: &[usize]) -> Vec<Tensor> {
-    assert!(tensor.shape.len() >= 1, "tensor must be at least 1D");
+    assert!(!tensor.shape.is_empty(), "tensor must be at least 1D");
 
     let batch_dim_size = tensor.shape[0];
     let mut result = Vec::new();

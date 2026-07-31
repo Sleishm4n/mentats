@@ -10,6 +10,12 @@ pub struct SoftmaxLayer {
     pub input: Option<Tensor>,
 }
 
+impl Default for SoftmaxLayer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SoftmaxLayer {
     pub fn new() -> Self {
         SoftmaxLayer { input: None }

@@ -1,5 +1,4 @@
 use crate::tensor::Tensor;
-use std::f32::INFINITY;
 
 impl Tensor {
     pub fn add(&self, other: &Tensor) -> Tensor {
@@ -15,7 +14,7 @@ impl Tensor {
     }
 
     pub fn tensor_max(&self) -> f32 {
-        let mut max = -INFINITY;
+        let mut max = -f32::INFINITY;
 
         for val in &self.data {
             if val > &max {

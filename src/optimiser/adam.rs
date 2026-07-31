@@ -25,7 +25,7 @@ impl Adam {
 }
 
 impl Optimiser for Adam {
-    fn step(&mut self, params: &mut Vec<Tensor>, grads: &Vec<Tensor>) {
+    fn step(&mut self, params: &mut Vec<Tensor>, grads: &[Tensor]) {
         if self.m.is_empty() {
             self.m = params
                 .iter()

@@ -1,5 +1,5 @@
 use crate::matrix::Matrix;
-use std::{f32::INFINITY, iter::zip};
+use std::iter::zip;
 
 pub fn square(x: f32) -> f32 {
     x * x
@@ -144,7 +144,7 @@ impl Matrix {
     }
 
     pub fn mat_max(&self) -> f32 {
-        let mut max = -INFINITY;
+        let mut max = -f32::INFINITY;
 
         for val in &self.data {
             if val > &max {

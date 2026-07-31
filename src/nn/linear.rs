@@ -129,8 +129,7 @@ impl Layer for LinearLayer {
                 // standard backwards pass
                 self.d_weight = Some(d_output.matmul(&self.input.as_ref().unwrap().transpose()));
                 self.d_bias = Some(d_output.clone());
-                let d_x = self.weight.transpose().matmul(d_output);
-                d_x
+                self.weight.transpose().matmul(d_output)
             }
             3 => {
                 // batched inputs
@@ -158,8 +157,7 @@ impl Layer for LinearLayer {
                 ));
                 self.d_bias = Some(d_output.sum_batch());
 
-                let d_x = self.weight.transpose().matmul_batched_broadcast(d_output);
-                d_x
+                self.weight.transpose().matmul_batched_broadcast(d_output)
             }
             _ => panic!("LinearLayer only supports 2D or 3D inputs"),
         }

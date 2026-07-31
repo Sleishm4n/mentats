@@ -77,7 +77,7 @@ impl Tensor {
 
     pub fn sum_batch(&self) -> Tensor {
         assert!(
-            self.shape.len() >= 1,
+            !self.shape.is_empty(),
             "tensor must have at least 1 dimension"
         );
 
