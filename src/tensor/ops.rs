@@ -24,6 +24,18 @@ impl Tensor {
         max
     }
 
+    pub fn tensor_min(&self) -> f32 {
+        let mut min = f32::INFINITY;
+
+        for val in &self.data {
+            if val < &min {
+                min = *val;
+            }
+        }
+
+        min
+    }
+
     pub fn matmul(&self, other: &Tensor) -> Tensor {
         assert!(self.shape.len() == 2);
         assert!(self.shape[1] == other.shape[0]);
