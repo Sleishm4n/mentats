@@ -28,7 +28,11 @@ impl Tensor {
     }
 
     fn flat(&self, index: &[usize]) -> usize {
-        assert_eq!(index.len(), self.shape.len(), "index rank must match tensor rank");
+        assert_eq!(
+            index.len(),
+            self.shape.len(),
+            "index rank must match tensor rank"
+        );
 
         let mut result: usize = 0;
         for i in 0..index.len() {
@@ -53,12 +57,17 @@ impl Tensor {
         assert_eq!(data.len(), shape.iter().product());
         let strides = Tensor::calc_strides(shape.clone());
         Tensor {
-            shape, strides, data
+            shape,
+            strides,
+            data,
         }
     }
-    
+
     pub fn display(&self) {
-        println!("Tensor(shape={:?}, strides={:?}, data={:?})", self.shape, self.strides, self.data);
+        println!(
+            "Tensor(shape={:?}, strides={:?}, data={:?})",
+            self.shape, self.strides, self.data
+        );
     }
 }
 

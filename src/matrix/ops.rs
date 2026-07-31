@@ -147,7 +147,7 @@ impl Matrix {
         let mut max = -INFINITY;
 
         for val in &self.data {
-            if val > &max  {
+            if val > &max {
                 max = *val;
             }
         }

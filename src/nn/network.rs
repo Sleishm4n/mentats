@@ -1,8 +1,8 @@
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter};
 
-use crate::{nn::Layer, optimiser::Optimiser, tensor::Tensor};
 use crate::utils::model_io::{load_layer, read_u32, write_u32};
+use crate::{nn::Layer, optimiser::Optimiser, tensor::Tensor};
 
 pub struct Network {
     layers: Vec<Box<dyn Layer>>,

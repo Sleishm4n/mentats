@@ -27,8 +27,14 @@ impl Adam {
 impl Optimiser for Adam {
     fn step(&mut self, params: &mut Vec<Tensor>, grads: &Vec<Tensor>) {
         if self.m.is_empty() {
-            self.m = params.iter().map(|p| Tensor::new(p.shape.clone())).collect();
-            self.v = params.iter().map(|p| Tensor::new(p.shape.clone())).collect();
+            self.m = params
+                .iter()
+                .map(|p| Tensor::new(p.shape.clone()))
+                .collect();
+            self.v = params
+                .iter()
+                .map(|p| Tensor::new(p.shape.clone()))
+                .collect();
         }
         self.t += 1;
         for i in 0..params.len() {

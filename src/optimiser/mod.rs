@@ -4,4 +4,4 @@ pub mod adam;
 
 pub trait Optimiser {
     fn step(&mut self, params: &mut Vec<Tensor>, grads: &Vec<Tensor>);
-} 
+}

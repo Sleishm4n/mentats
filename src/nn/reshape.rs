@@ -1,7 +1,8 @@
 use std::io::{self, Read, Write};
 
 use crate::{
-    nn::Layer, tensor::Tensor,
+    nn::Layer,
+    tensor::Tensor,
     utils::model_io::{read_shape, write_shape, write_u8, TAG_RESHAPE},
 };
 

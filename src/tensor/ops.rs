@@ -18,7 +18,7 @@ impl Tensor {
         let mut max = -INFINITY;
 
         for val in &self.data {
-            if val > &max  {
+            if val > &max {
                 max = *val;
             }
         }
@@ -49,8 +49,12 @@ impl Tensor {
     }
 
     pub fn permute(&self, axes: &[usize]) -> Tensor {
-        assert_eq!(axes.len(), self.shape.len(), "axes length must match tensor rank");
-        
+        assert_eq!(
+            axes.len(),
+            self.shape.len(),
+            "axes length must match tensor rank"
+        );
+
         let mut seen = vec![false; self.shape.len()];
         let mut new_shape: Vec<usize> = Vec::new();
         let mut new_strides: Vec<usize> = Vec::new();
@@ -102,7 +106,7 @@ impl Tensor {
             }
         }
 
-       result
+        result
     }
 
     fn next_index(index: &mut [usize], shape: &[usize]) -> bool {
@@ -206,7 +210,7 @@ mod tests {
         assert_eq!(mapped.shape, vec![3, 32, 32]);
         assert_eq!(mapped.get(&[0, 0, 0]), tensor.get(&[0, 0, 0]) + 0.5);
         assert_eq!(mapped.get(&[1, 0, 0]), tensor.get(&[0, 0, 1]) + 0.5);
-        assert_eq!(mapped.get(&[2, 31, 31]), tensor.get(&[31, 31, 2]) + 0.5);   
+        assert_eq!(mapped.get(&[2, 31, 31]), tensor.get(&[31, 31, 2]) + 0.5);
     }
 
     #[test]

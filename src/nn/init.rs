@@ -35,7 +35,7 @@ fn sample_standard_normal<R: Rng + ?Sized>(rng: &mut R) -> f32 {
     };
     let u2: f32 = rng.gen_range(0.0..1.0);
 
-    let r = (-2.0 *u1.ln()).sqrt();
+    let r = (-2.0 * u1.ln()).sqrt();
     let theta = 2.0 * std::f32::consts::PI * u2;
     r * theta.cos()
 }

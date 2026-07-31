@@ -110,7 +110,9 @@ impl Layer for ActivationLayer {
 
     fn backward_pass(&mut self, d_output: &Tensor) -> Tensor {
         let input = self.input.as_ref().unwrap();
-        input.map(self.kind.derivative()).zip_map(d_output, |d, g| d * g)
+        input
+            .map(self.kind.derivative())
+            .zip_map(d_output, |d, g| d * g)
     }
 
     fn get_params(&self) -> Vec<Tensor> {

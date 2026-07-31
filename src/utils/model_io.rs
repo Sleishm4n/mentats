@@ -1,8 +1,8 @@
 use std::io::{self, Read, Write};
 
 use crate::nn::{
-    activation::ActivationLayer, flatten::FlattenLayer, linear::LinearLayer,
-    reshape::ReshapeLayer, sampling::GaussianSampler, softmax::SoftmaxLayer, Layer,
+    activation::ActivationLayer, flatten::FlattenLayer, linear::LinearLayer, reshape::ReshapeLayer,
+    sampling::GaussianSampler, softmax::SoftmaxLayer, Layer,
 };
 use crate::tensor::Tensor;
 

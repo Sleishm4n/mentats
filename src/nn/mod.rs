@@ -2,13 +2,13 @@ use crate::tensor::Tensor;
 use std::io::{self, Write};
 
 pub mod activation;
+pub mod flatten;
+pub mod init;
 pub mod linear;
 pub mod network;
-pub mod init;
 pub mod reshape;
-pub mod flatten;
-pub mod softmax;
 pub mod sampling;
+pub mod softmax;
 
 pub trait Layer {
     fn forward_pass(&mut self, input: &Tensor) -> Tensor;
@@ -17,5 +17,5 @@ pub trait Layer {
     fn get_params(&self) -> Vec<Tensor>;
     fn get_grads(&self) -> Vec<Tensor>;
 
-    fn save(&self, writer: &mut dyn Write) -> io::Result<()>; 
+    fn save(&self, writer: &mut dyn Write) -> io::Result<()>;
 }

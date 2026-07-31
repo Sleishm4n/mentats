@@ -14,7 +14,9 @@ impl Tensor {
 
         assert_eq!(n, other.shape[0], "dimension mismatch for matmul");
 
-        let other_flat: Vec<f32> = (0..n).flat_map(|k| (0..p).map(move |j| other.get(&[k, j]))).collect();
+        let other_flat: Vec<f32> = (0..n)
+            .flat_map(|k| (0..p).map(move |j| other.get(&[k, j])))
+            .collect();
 
         let mut result = Tensor::new(vec![batch_size, m, p]);
 
@@ -48,19 +50,22 @@ impl Tensor {
 
         assert_eq!(n, other.shape[1], "dimension mismatch for matmul");
 
-        let self_rows: Vec<Vec<f32>> = (0..m).map(|i| (0..n).map(move |k| self.get(&[i, k])).collect()).collect();
+        let self_rows: Vec<Vec<f32>> = (0..m)
+            .map(|i| (0..n).map(move |k| self.get(&[i, k])).collect())
+            .collect();
 
         let mut result = Tensor::new(vec![batch_size, m, p]);
 
         for b in 0..batch_size {
-            let other_flat: Vec<f32> = (0..n).flat_map(|k| (0..p).map(move |j| other.get(&[b, k, j]))).collect();
+            let other_flat: Vec<f32> = (0..n)
+                .flat_map(|k| (0..p).map(move |j| other.get(&[b, k, j])))
+                .collect();
             for i in 0..m {
-                
                 for j in 0..p {
                     let mut sum = 0.0;
 
                     for k in 0..n {
-                        sum += self_rows[i][k] * other_flat[k * p +j];
+                        sum += self_rows[i][k] * other_flat[k * p + j];
                     }
                     result.set(&[b, i, j], sum);
                 }
@@ -71,7 +76,10 @@ impl Tensor {
     }
 
     pub fn sum_batch(&self) -> Tensor {
-        assert!(self.shape.len() >= 1, "tensor must have at least 1 dimension");
+        assert!(
+            self.shape.len() >= 1,
+            "tensor must have at least 1 dimension"
+        );
 
         if self.shape.len() == 1 {
             let sum = self.data.iter().sum();
