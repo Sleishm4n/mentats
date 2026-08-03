@@ -51,7 +51,7 @@ mod test {
         assert_eq!(images.len(), 60000);
         assert_eq!(images[0].shape[0], 784);
         assert_eq!(images[0].shape[1], 1);
-        assert!(images[0].data.iter().all(|&p| p >= 0.0 && p <= 1.0));
+        assert!(images[0].data.iter().all(|&p| (0.0..=1.0).contains(&p)));
     }
 
     #[test]

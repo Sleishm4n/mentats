@@ -81,7 +81,7 @@ mod tests {
         let grad = d_cross_entropy(&output, &target);
 
         let max = 3.0_f32;
-        let exps: Vec<f32> = vec![1.0f32, 2.0, 3.0]
+        let exps: Vec<f32> = [1.0f32, 2.0, 3.0]
             .iter()
             .map(|x| (x - max).exp())
             .collect();

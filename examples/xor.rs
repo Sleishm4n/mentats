@@ -15,8 +15,8 @@ fn main() {
     let epochs = 10000;
 
     // XOR inputs and targets
-    let inputs = vec![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]];
-    let targets = vec![[0.0], [1.0], [1.0], [0.0]];
+    let inputs = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]];
+    let targets = [[0.0], [1.0], [1.0], [0.0]];
 
     for epoch in 0..epochs {
         let mut total_loss = 0.0;
