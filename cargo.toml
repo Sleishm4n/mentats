@@ -5,7 +5,3 @@ edition = "2021"
 
 [dependencies]
 rand = "0.8"
-
-[[bin]]
-name = "tensor"
-path = "src/tensor/tensor.rs"

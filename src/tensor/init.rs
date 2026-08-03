@@ -25,14 +25,14 @@ mod tests {
 
     #[test]
     fn test_rand_range_io_shape_match() {
-        let tensor = Tensor::rand_range(vec![3,2], -1.0, 1.0);
+        let tensor = Tensor::rand_range(vec![3, 2], -1.0, 1.0);
 
-        assert_eq!(tensor.shape, vec![3,2]);
+        assert_eq!(tensor.shape, vec![3, 2]);
     }
 
     #[test]
     fn test_rand_range_values_within_minmax() {
-        let tensor = Tensor::rand_range(vec![3,2], -10.0, 10.0);
+        let tensor = Tensor::rand_range(vec![3, 2], -10.0, 10.0);
 
         assert!(tensor.tensor_min() >= -10.0);
         assert!(tensor.tensor_max() <= 10.0);
@@ -41,7 +41,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "min cannot be larger than max")]
     fn test_rand_range_panics_on_min_larger_max() {
-        let _tensor = Tensor::rand_range(vec![3,2], 2.0, 1.0);
+        let _tensor = Tensor::rand_range(vec![3, 2], 2.0, 1.0);
     }
 
     #[test]
