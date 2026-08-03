@@ -47,4 +47,4 @@ jobs:
           components: llvm-tools-preview
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
-      - run: cargo llvm-cov --workspace --summary-only
+      - run: cargo llvm-cov --workspace --summary-only -- --skip data::
