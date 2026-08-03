@@ -35,9 +35,10 @@ impl Tensor {
         );
 
         let mut result: usize = 0;
-        for i in 0..index.len() {
-            assert!(index[i] < self.shape[i], "index out of bounds for axis {i}");
-            result += index[i] * self.strides[i];
+
+        for (i, &idx) in index.iter().enumerate() {
+            assert!(idx < self.shape[i], "index out of bounds for axis {i}");
+            result += idx * self.strides[i];
         }
 
         result

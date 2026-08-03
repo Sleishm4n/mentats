@@ -1,5 +1,5 @@
 pub mod init;
-pub mod matrix;
+pub mod core;
 pub mod ops;
 
-pub use matrix::Matrix;
+pub use core::Matrix;

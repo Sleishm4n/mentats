@@ -69,12 +69,12 @@ impl Tensor {
             let other_flat: Vec<f32> = (0..n)
                 .flat_map(|k| (0..p).map(move |j| other.get(&[b, k, j])))
                 .collect();
-            for i in 0..m {
+            for (i, row) in self_rows.iter().enumerate() {
                 for j in 0..p {
                     let mut sum = 0.0;
 
                     for k in 0..n {
-                        sum += self_rows[i][k] * other_flat[k * p + j];
+                        sum += row[k] * other_flat[k * p + j];
                     }
                     result.set(&[b, i, j], sum);
                 }
@@ -108,8 +108,11 @@ impl Tensor {
         // buffer directly as `b * remaining_size + i` rather than going through
         // self.get(),
         for b in 0..batch_size {
-            for i in 0..remaining_size {
-                result_data[i] += self.data[b * remaining_size + i];
+            let batch_start = b * remaining_size;
+            let batch = &self.data[batch_start..batch_start + remaining_size];
+
+            for (result, value) in result_data.iter_mut().zip(batch) {
+                *result += value;
             }
         }
 

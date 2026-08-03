@@ -6,4 +6,4 @@ pub mod optimiser;
 pub mod tensor;
 pub mod utils;
 
-pub use tensor::tensor::Tensor;
+pub use tensor::core::Tensor;

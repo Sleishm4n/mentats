@@ -47,8 +47,9 @@ mod tests {
 
         let loss = cross_entropy(&output, &target);
 
-        // -ln(1/3) approx 1.098612
-        assert!((loss - 1.098612).abs() < 1e-5)
+        // Uniform distribution over 3 classes: -ln(1/3) = ln(3)
+        let expected = 3.0_f32.ln();
+        assert!((loss - expected).abs() < 1e-5)
     }
 
     #[test]
@@ -59,7 +60,7 @@ mod tests {
         let loss = cross_entropy(&output, &target);
 
         assert!(loss.is_finite(), "loss was {loss}, expected a finite value");
-        assert!((loss - 1.098612).abs() < 1e-4); 
+        assert!((loss - 1.098612).abs() < 1e-4);
     }
 
     #[test]
@@ -81,15 +82,12 @@ mod tests {
         let grad = d_cross_entropy(&output, &target);
 
         let max = 3.0_f32;
-        let exps: Vec<f32> = [1.0f32, 2.0, 3.0]
-            .iter()
-            .map(|x| (x - max).exp())
-            .collect();
+        let exps: Vec<f32> = [1.0f32, 2.0, 3.0].iter().map(|x| (x - max).exp()).collect();
         let sum: f32 = exps.iter().sum();
         let probs: Vec<f32> = exps.iter().map(|e| e / sum).collect();
 
-        for i in 0..3 {
-            let expected = probs[i] - target.data[i];
+        for (i, &prob) in probs.iter().enumerate() {
+            let expected = prob - target.data[i];
             assert!((grad.data[i] - expected).abs() < 1e-5);
         }
     }
@@ -129,7 +127,8 @@ mod tests {
 
         let loss = binary_cross_entropy(&logits, &target);
 
-        assert!((loss - 0.693147).abs() < 1e-5);
+        let expected = std::f32::consts::LN_2;
+        assert!((loss - expected).abs() < 1e-5);
     }
 
     #[test]
@@ -139,7 +138,8 @@ mod tests {
 
         let loss = binary_cross_entropy(&logits, &target);
 
-        assert!((loss - 0.693147).abs() < 1e-5);
+        let expected = std::f32::consts::LN_2;
+        assert!((loss - expected).abs() < 1e-5);
     }
 
     #[test]
@@ -161,6 +161,6 @@ mod tests {
         let loss = binary_cross_entropy(&logits, &target);
 
         assert!(loss.is_finite());
-        assert!(loss > 10.0); 
+        assert!(loss > 10.0);
     }
 }
