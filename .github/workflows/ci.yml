@@ -36,7 +36,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --verbose
-      - run: cargo test --verbose -- --skip data::
+      - run: cargo test --verbose -- --skip "data::"
 
   coverage:
     runs-on: ubuntu-latest
@@ -47,4 +47,4 @@ jobs:
           components: llvm-tools-preview
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
-      - run: cargo llvm-cov --workspace --summary-only -- --skip data::
+      - run: cargo llvm-cov --workspace --summary-only -- --skip "data::"
