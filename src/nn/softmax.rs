@@ -44,10 +44,10 @@ impl Layer for SoftmaxLayer {
     }
 
     fn get_params(&self) -> Vec<Tensor> {
-        vec![]
+        Vec::new()
     }
     fn get_grads(&self) -> Vec<Tensor> {
-        vec![]
+        Vec::new()
     }
     fn set_params(&mut self, _params: Vec<Tensor>) {}
 
