@@ -113,13 +113,13 @@ mod tests {
     #[test]
     fn test_kl_correct_value() {
         // mu=1.0, log_var=0.0 (var=1.0):
-        // KL = -0.5 * (1 + 0 - 1 - 1) = -0.5 * (-1) = 0.5
+        // raw KL = 0.5, but free bits threshold is 0.5, so the clamped result is 0.0.
         let mu = Tensor::from_vec(vec![1, 1], vec![1.0]);
         let log_var = Tensor::from_vec(vec![1, 1], vec![0.0]);
 
         let kl = kl_divergence(&mu, &log_var);
 
-        assert!((kl - 0.5).abs() < 1e-5);
+        assert!((kl - 0.0).abs() < 1e-5);
     }
 
     #[test]

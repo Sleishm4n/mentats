@@ -97,7 +97,7 @@ fn main() {
     let label_dim = 10;
     let batch_size = 64;
     let epochs = 30;
-    
+
     let beta_max = 1.0;
     let total_warmup_epochs = 5.0;
 
