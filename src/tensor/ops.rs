@@ -1,3 +1,5 @@
+use std::assert_eq;
+
 use crate::tensor::Tensor;
 
 impl Tensor {
@@ -133,6 +135,75 @@ impl Tensor {
 
     pub fn elementwise_square(&self) -> Tensor {
         self.map(|x| x * x)
+    }
+
+    pub fn concat_features_2d(&self, other: &Tensor) -> Tensor {
+        // Accepts any 1D or 2D shape ([N], [N, 1], or [1, N])
+        // and returns a normalized [features, 1] column vector.
+        let left_len = self.data.len();
+        let right_len = other.data.len();
+
+        let mut data = Vec::with_capacity(left_len + right_len);
+        data.extend_from_slice(&self.data);
+        data.extend_from_slice(&other.data);
+
+        Tensor::from_vec(vec![left_len + right_len, 1], data)
+    }
+
+    pub fn concat_features_batch(&self, other: &Tensor) -> Tensor {
+        assert_eq!(
+            self.shape.len(),
+            3,
+            "self must be rank-3 [batch, features, 1]"
+        );
+        assert_eq!(
+            other.shape.len(),
+            3,
+            "other must be rank-3 [batch, features, 1]"
+        );
+        assert_eq!(self.shape[0], other.shape[0], "batch sizes must match");
+        assert_eq!(self.shape[2], 1, "self trailing dimension must be 1");
+        assert_eq!(other.shape[2], 1, "other trailing dimension must be 1");
+
+        let batch = self.shape[0];
+        let left_features = self.shape[1];
+        let right_features = other.shape[1];
+        let mut data = Vec::with_capacity(batch * (left_features + right_features));
+
+        for b in 0..batch {
+            let ls = b * left_features;
+            data.extend_from_slice(&self.data[ls..ls + left_features]);
+            let rs = b * right_features;
+            data.extend_from_slice(&other.data[rs..rs + right_features]); // Fixed to other.data
+        }
+
+        Tensor::from_vec(vec![batch, left_features + right_features, 1], data)
+    }
+
+    pub fn take_first_features_batch(&self, keep: usize) -> Tensor {
+        assert_eq!(
+            self.shape.len(),
+            3,
+            "tensor must be rank-3 [batch, features, 1]"
+        );
+        assert_eq!(self.shape[2], 1, "trailing dimension must be 1");
+        assert!(
+            keep <= self.shape[1],
+            "cannot keep more features ({}) than tensor has ({})",
+            keep,
+            self.shape[1]
+        );
+
+        let batch = self.shape[0];
+        let features = self.shape[1];
+        let mut data = Vec::with_capacity(batch * keep);
+
+        for b in 0..batch {
+            let start = b * features;
+            data.extend_from_slice(&self.data[start..start + keep]);
+        }
+
+        Tensor::from_vec(vec![batch, keep, 1], data)
     }
 }
 

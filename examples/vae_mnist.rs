@@ -1,4 +1,5 @@
 use rust_ml::data::mnist::{load_images, load_labels};
+use rust_ml::loss::kl_divergence::{d_kl_divergence_log_var, d_kl_divergence_mu};
 use rust_ml::loss::{cross_entropy::binary_cross_entropy, kl_divergence::kl_divergence};
 use rust_ml::nn::activation::{ActivationKind::Relu, ActivationLayer};
 use rust_ml::nn::linear::LinearLayer;
@@ -8,6 +9,8 @@ use rust_ml::nn::Layer;
 use rust_ml::optimiser::adam::Adam;
 use rust_ml::tensor::Tensor;
 use rust_ml::utils::batch::BatchIterator;
+use rust_ml::utils::image::save_mnist_tensor_pgm;
+use rust_ml::utils::vae::{combine_kl_grads, split_mu_log_var};
 use std::fs::{create_dir_all, File};
 use std::io::{BufWriter, Write};
 use std::path::Path;
@@ -43,49 +46,6 @@ fn load_classifier() -> Network {
     }
 }
 
-/// Splits a 3D tensor of shape `[batch, latent_dim * 2, 1]` into `mu` and `log_var`,
-/// both of shape `[batch, latent_dim, 1]`.
-fn split_mu_log_var(mu_log_var: &Tensor, latent_dim: usize) -> (Tensor, Tensor) {
-    let batch_size = mu_log_var.shape[0];
-    let mut mu_data = Vec::with_capacity(batch_size * latent_dim);
-    let mut log_var_data = Vec::with_capacity(batch_size * latent_dim);
-
-    let stride = latent_dim * 2;
-    for i in 0..batch_size {
-        let sample_start = i * stride;
-        let mu_end = sample_start + latent_dim;
-        let log_var_end = sample_start + stride;
-
-        mu_data.extend_from_slice(&mu_log_var.data[sample_start..mu_end]);
-        log_var_data.extend_from_slice(&mu_log_var.data[mu_end..log_var_end]);
-    }
-
-    let mu = Tensor::from_vec(vec![batch_size, latent_dim, 1], mu_data);
-    let log_var = Tensor::from_vec(vec![batch_size, latent_dim, 1], log_var_data);
-
-    (mu, log_var)
-}
-
-/// Combines `d_mu` and `d_log_var` (each `[batch, latent_dim, 1]`) back into
-/// a contiguous `[batch, latent_dim * 2, 1]` gradient tensor.
-fn combine_kl_grads(d_mu: &Tensor, d_log_var: &Tensor, latent_dim: usize) -> Tensor {
-    let batch_size = d_mu.shape[0];
-    let mut combined_data = Vec::with_capacity(batch_size * latent_dim * 2);
-
-    for i in 0..batch_size {
-        let mu_start = i * latent_dim;
-        let mu_end = mu_start + latent_dim;
-
-        let log_var_start = i * latent_dim;
-        let log_var_end = log_var_start + latent_dim;
-
-        combined_data.extend_from_slice(&d_mu.data[mu_start..mu_end]);
-        combined_data.extend_from_slice(&d_log_var.data[log_var_start..log_var_end]);
-    }
-
-    Tensor::from_vec(vec![batch_size, latent_dim * 2, 1], combined_data)
-}
-
 /// Stacks a slice of 2D/1D image tensors into a single 3D batch tensor of shape `[batch_size, 784, 1]`.
 fn stack_batch(images: &[Tensor], indices: &[usize]) -> Tensor {
     let batch_size = indices.len();
@@ -99,54 +59,10 @@ fn stack_batch(images: &[Tensor], indices: &[usize]) -> Tensor {
     Tensor::from_vec(vec![batch_size, feature_dim, 1], batch_data)
 }
 
-fn to_u8_gray(v: f32, apply_sigmoid: bool) -> u8 {
-    let p = if apply_sigmoid {
-        1.0 / (1.0 + (-v).exp())
-    } else {
-        v
-    }
-    .clamp(0.0, 1.0);
-
-    (p * 255.0).round() as u8
-}
-
-fn save_mnist_tensor_pgm(
-    tensor: &Tensor,
-    path: &Path,
-    apply_sigmoid: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
-    if tensor.data.len() != 28 * 28 {
-        return Err(format!(
-            "Expected 784 values for MNIST images, got {}",
-            tensor.data.len()
-        )
-        .into());
-    }
-
-    let file = File::create(path)?;
-    let mut writer = BufWriter::new(file);
-
-    writeln!(writer, "P2")?;
-    writeln!(writer, "28 28")?;
-    writeln!(writer, "255")?;
-
-    for (i, v) in tensor.data.iter().enumerate() {
-        let px = to_u8_gray(*v, apply_sigmoid);
-        if i % 28 == 27 {
-            writeln!(writer, "{}", px)?;
-        } else {
-            write!(writer, "{} ", px)?;
-        }
-    }
-
-    Ok(())
-}
-
 fn main() {
-    let latent_dim = 32;
+    let latent_dim = 10;
     let batch_size = 64;
     let epochs = 30;
-    let total_warmup_epochs = 5.0;
 
     let mut encoder = Network::new(vec![
         Box::new(LinearLayer::new_rand(784, 512)),
@@ -181,10 +97,23 @@ fn main() {
     println!("VAE Training on MNIST");
     println!("========================================\n");
 
-    for epoch in 0..epochs {
-        // Dynamic KL Annealing Warmup factor (0.0001 -> 0.001)
-        let beta = (epoch as f32 / total_warmup_epochs).min(1.0) * 0.001;
+    // --------------------------------------------------
+    // Per-step KL annealing setup
+    //
+    // Beta is now ramped smoothly on every batch instead of
+    // once per epoch. This avoids a full beta=0 epoch during
+    // which mu/log_var can drift arbitrarily far from the
+    // prior with zero KL pressure, which was producing a
+    // violent corrective gradient once beta turned on and
+    // driving mu/log_var straight into collapse (mu=0, log_var=0)
+    // instead of settling into a useful encoding.
+    // --------------------------------------------------
+    let beta_max = 1.0;
+    let total_warmup_epochs = 15.0;
+    let batches_per_epoch = (images.len() + batch_size - 1) / batch_size;
+    let total_warmup_steps = (total_warmup_epochs * batches_per_epoch as f32) as usize;
 
+    for epoch in 0..epochs {
         let mut total_loss = 0.0;
         let mut total_recon_loss = 0.0;
         let mut total_kl_loss = 0.0;
@@ -193,6 +122,9 @@ fn main() {
         let mut batch_iter = BatchIterator::new(images.len(), batch_size, true);
 
         while let Some(batch_indices) = batch_iter.next_batch() {
+            let global_step = epoch * batches_per_epoch + batch_count;
+            let beta = (global_step as f32 / total_warmup_steps as f32).min(1.0) * beta_max;
+
             // 1. Stack raw images into a [batch, 784, 1] tensor
             let x_batch = stack_batch(&images, &batch_indices);
 
@@ -222,12 +154,10 @@ fn main() {
             // 7. Sampler Gradient
             let d_mu_log_var_recon = sampler.backward_pass(&d_z);
 
-            // 8. KL Gradients
-            // Scale by (1 / latent_dim) so KL gradients match normalized KL loss scale
-            let d_mu_kl = mu.scale(1.0 / latent_dim as f32);
-            let d_log_var_kl = log_var.map(|lv| 0.5 * (lv.exp() - 1.0) / (latent_dim as f32));
-            let d_mu_log_var_kl = combine_kl_grads(&d_mu_kl, &d_log_var_kl, latent_dim)
-                .scale(beta / current_batch_size);
+            // 8. KL Gradients (already normalized by batch_size internally)
+            let d_mu_kl = d_kl_divergence_mu(&mu, &log_var).scale(beta);
+            let d_log_var_kl = d_kl_divergence_log_var(&mu, &log_var).scale(beta);
+            let d_mu_log_var_kl = combine_kl_grads(&d_mu_kl, &d_log_var_kl, latent_dim);
 
             // 9. Total Encoder Input Gradient
             let d_mu_log_var_total = d_mu_log_var_recon.add(&d_mu_log_var_kl);
@@ -246,12 +176,17 @@ fn main() {
             batch_count += 1;
         }
 
+        // Beta at the end of the epoch, for logging purposes only.
+        let epoch_end_step = (epoch + 1) * batches_per_epoch;
+        let beta_logged = (epoch_end_step as f32 / total_warmup_steps as f32).min(1.0) * beta_max;
+
         println!(
-            "Epoch {}: Loss = {:.4} (Recon: {:.4}, KL: {:.4})",
+            "Epoch {}: Loss = {:.4} (Recon: {:.4}, KL: {:.4}, Beta: {:.5})",
             epoch,
             total_loss / batch_count as f32,
             total_recon_loss / batch_count as f32,
             total_kl_loss / batch_count as f32,
+            beta_logged,
         );
 
         // Epoch preview evaluation (Single Sample 2D compatibility path)

@@ -1,36 +1,100 @@
 use crate::tensor::Tensor;
 
+/// Free bits threshold, in nats per latent dimension. Dimensions whose
+/// KL contribution falls below this are not penalized, giving the
+/// encoder slack to use them without paying a KL cost — this removes
+/// the incentive for the decoder to find a solution that ignores z entirely.
+pub const FREE_BITS_TAU: f32 = 0.5;
+
+/// Computes raw (unclamped) KL per latent dimension, averaged over the batch.
+/// Returns a Vec<f32> of length latent_dim.
+fn per_dim_kl(mu: &Tensor, log_var: &Tensor) -> Vec<f32> {
+    let (batch_size, latent_dim) = if mu.shape.len() == 3 {
+        (mu.shape[0], mu.shape[1])
+    } else {
+        (1, mu.shape[0])
+    };
+
+    let mut per_dim = vec![0.0f32; latent_dim];
+
+    for b in 0..batch_size {
+        for d in 0..latent_dim {
+            let idx = b * latent_dim + d;
+            let m = mu.data[idx];
+            let lv = log_var.data[idx];
+            let var = lv.exp();
+            per_dim[d] += -0.5 * (1.0 + lv - m * m - var);
+        }
+    }
+
+    for v in per_dim.iter_mut() {
+        *v /= batch_size as f32;
+    }
+
+    per_dim
+}
+
+/// 1.0 for dimensions currently above the free bits threshold (gradient flows),
+/// 0.0 for dimensions at or below it (gradient clamped to zero).
+fn free_bits_mask(mu: &Tensor, log_var: &Tensor) -> Vec<f32> {
+    per_dim_kl(mu, log_var)
+        .iter()
+        .map(|&k| if k > FREE_BITS_TAU { 1.0 } else { 0.0 })
+        .collect()
+}
+
 pub fn kl_divergence(mu: &Tensor, log_var: &Tensor) -> f32 {
     assert_eq!(
         mu.shape, log_var.shape,
         "mu and log_var must have the same shape"
     );
 
-    let batch_size = if mu.shape.len() == 3 { mu.shape[0] } else { 1 };
-    let mut total_kl: f32 = 0.0;
+    per_dim_kl(mu, log_var)
+        .iter()
+        .map(|&k| (k - FREE_BITS_TAU).max(0.0))
+        .sum()
+}
 
-    for i in 0..mu.data.len() {
-        let m = mu.data[i];
-        let lv = log_var.data[i];
-        let var = lv.exp();
-        total_kl += -0.5 * (1.0 + lv - m * m - var);
+/// Note: now takes log_var as well as mu, since the free-bits mask depends
+/// on both — this is a signature change from the pre-free-bits version.
+pub fn d_kl_divergence_mu(mu: &Tensor, log_var: &Tensor) -> Tensor {
+    let (batch_size, latent_dim) = if mu.shape.len() == 3 {
+        (mu.shape[0], mu.shape[1])
+    } else {
+        (1, mu.shape[0])
+    };
+    let mask = free_bits_mask(mu, log_var);
+
+    let mut data = Vec::with_capacity(mu.data.len());
+    for b in 0..batch_size {
+        for d in 0..latent_dim {
+            let idx = b * latent_dim + d;
+            data.push(mu.data[idx] * mask[d] / batch_size as f32);
+        }
     }
 
-    total_kl / batch_size as f32
+    Tensor::from_vec(mu.shape.clone(), data)
 }
 
-pub fn d_kl_divergence_mu(mu: &Tensor) -> Tensor {
-    let batch_size = if mu.shape.len() == 3 { mu.shape[0] } else { 1 };
-    mu.map(|m| m / batch_size as f32)
-}
-
-pub fn d_kl_divergence_log_var(log_var: &Tensor) -> Tensor {
-    let batch_size = if log_var.shape.len() == 3 {
-        log_var.shape[0]
+/// Note: signature change — mu is now required alongside log_var for the mask.
+pub fn d_kl_divergence_log_var(mu: &Tensor, log_var: &Tensor) -> Tensor {
+    let (batch_size, latent_dim) = if log_var.shape.len() == 3 {
+        (log_var.shape[0], log_var.shape[1])
     } else {
-        1
+        (1, log_var.shape[0])
     };
-    log_var.map(|lv| 0.5 * (lv.exp() - 1.0) / batch_size as f32)
+    let mask = free_bits_mask(mu, log_var);
+
+    let mut data = Vec::with_capacity(log_var.data.len());
+    for b in 0..batch_size {
+        for d in 0..latent_dim {
+            let idx = b * latent_dim + d;
+            let lv = log_var.data[idx];
+            data.push(0.5 * (lv.exp() - 1.0) * mask[d] / batch_size as f32);
+        }
+    }
+
+    Tensor::from_vec(log_var.shape.clone(), data)
 }
 
 #[cfg(test)]
@@ -63,7 +127,7 @@ mod tests {
         let mu = Tensor::from_vec(vec![2, 2, 1], vec![0.3, -0.7, 1.1, 0.2]);
         let log_var = Tensor::from_vec(vec![2, 2, 1], vec![0.1, -0.2, 0.05, 0.3]);
 
-        let analytical = d_kl_divergence_mu(&mu);
+        let analytical = d_kl_divergence_mu(&mu, &log_var);
 
         let epsilon = 1e-4;
         for i in 0..mu.data.len() {
@@ -91,7 +155,7 @@ mod tests {
         let mu = Tensor::from_vec(vec![2, 2, 1], vec![0.3, -0.7, 1.1, 0.2]);
         let log_var = Tensor::from_vec(vec![2, 2, 1], vec![0.1, -0.2, 0.05, 0.3]);
 
-        let analytical = d_kl_divergence_log_var(&log_var);
+        let analytical = d_kl_divergence_log_var(&mu, &log_var);
 
         let epsilon = 1e-4;
         for i in 0..log_var.data.len() {
