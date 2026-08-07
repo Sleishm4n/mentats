@@ -1,4 +1,18 @@
+//! Core tensor type and basic operations.
+//!
+//! This module has no dependency on `nn` or `loss`, it's the base layer
+//! everything else builds on.
+ 
+/// A dense, row-major, N-dimensional array of `f32`.
+///
+/// `shape` and `strides` must stay consistent with each other and with the
+/// length of `data`. Prefer [`Tensor::new`] or [`Tensor::from_vec`] over
+/// constructing a `Tensor` directly, nothing prevents `shape`, `strides`,
+/// and `data` from being mutated out of sync with each other, which would
+/// silently corrupt indexing via [`Tensor::get`] / [`Tensor::set`].
+
 #[derive(Clone)]
+/// A dense row major N dimensional array of 'f32'
 pub struct Tensor {
     pub shape: Vec<usize>,
     pub strides: Vec<usize>,
@@ -6,6 +20,7 @@ pub struct Tensor {
 }
 
 impl Tensor {
+    /// Builds a tensor of specified shape `Vec<usize>` filled with zeros
     pub fn new(shape: Vec<usize>) -> Tensor {
         let size: usize = shape.iter().product();
         let strides = Tensor::calc_strides(shape.clone());
@@ -16,6 +31,7 @@ impl Tensor {
         }
     }
 
+    /// Computes row-major strides for a given shape
     fn calc_strides(shape: Vec<usize>) -> Vec<usize> {
         let mut strides = vec![0; shape.len()];
         let mut running_prod = 1;
@@ -27,6 +43,12 @@ impl Tensor {
         strides
     }
 
+    /// Converts a multi-dimensional `index` into a flat offset into `data`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index.len()` doesn't match the tensor's rank, or if any
+    /// component of `index` is out of bounds for its axis.
     fn flat(&self, index: &[usize]) -> usize {
         assert_eq!(
             index.len(),
@@ -44,16 +66,54 @@ impl Tensor {
         result
     }
 
+    /// Returns the element at the given multi-dimensional `index`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index.len()` doesn't match the tensor's rank, or if any
+    /// component of `index` is out of bounds for its axis.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use mentats::tensor::Tensor;
+    ///
+    /// let tensor = Tensor::from_vec(vec![2, 1], vec![1.0, 0.0]);
+    /// let elem = tensor.get(&[0, 0]);
+    /// assert_eq!(elem, 1.0);
+    /// ```
     pub fn get(&self, index: &[usize]) -> f32 {
         let flat_index = self.flat(index);
         self.data[flat_index]
     }
-
+ 
+    /// Sets the element at the given multi-dimensional `index` to `val`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index.len()` doesn't match the tensor's rank, or if any
+    /// component of `index` is out of bounds for its axis.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use mentats::tensor::Tensor;
+    ///
+    /// let mut tensor = Tensor::from_vec(vec![2, 1], vec![1.0, 0.0]);
+    /// tensor.set(&[0, 0], 2.0);
+    /// let elem = tensor.get(&[0, 0]);
+    /// assert_eq!(elem, 2.0);
+    /// ```
     pub fn set(&mut self, index: &[usize], val: f32) {
         let flat_index = self.flat(index);
         self.data[flat_index] = val;
     }
-
+ 
+    /// Builds a tensor from a flat `Vec<f32>` and an explicit shape.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `data.len()` doesn't match the product of `shape`.
     pub fn from_vec(shape: Vec<usize>, data: Vec<f32>) -> Tensor {
         assert_eq!(
             data.len(),
@@ -67,7 +127,8 @@ impl Tensor {
             data,
         }
     }
-
+ 
+    /// Prints the tensor's shape, strides, and data to stdout.
     pub fn display(&self) {
         println!(
             "Tensor(shape={:?}, strides={:?}, data={:?})",

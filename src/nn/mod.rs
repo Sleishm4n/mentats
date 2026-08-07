@@ -1,3 +1,18 @@
+//! Neural network components and abstractions.
+//!
+//! This module provides the core building blocks for constructing and
+//! training neural networks, including layers, activation functions,
+//! parameter initialisation, tensor reshaping, and sampling.
+//! ## Modules
+//!
+//! - [`activation`] - Activation functions and activation layers.
+//! - [`flatten`] - A layer for flattening tensors.
+//! - [`init`] - Parameter initialisation methods.
+//! - [`linear`] - Linear (fully connected) layers.
+//! - [`network`] - Neural network construction and management.
+//! - [`reshape`] - Layers for reshaping tensors.
+//! - [`sampling`] - Sampling layers used by probabilistic models such as VAEs.
+//! - [`softmax`] - Softmax activation and related functionality.
 use crate::tensor::Tensor;
 use std::io::{self, Write};
 
