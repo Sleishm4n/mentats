@@ -1,4 +1,4 @@
-# rust-ml 
+# mentats
 
 A neural network library built from scratch in Rust, designed to understand deep learning fundamentals through implementation.
 
