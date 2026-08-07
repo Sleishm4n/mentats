@@ -1,10 +1,10 @@
-use rust_ml::data::mnist::{load_images, load_labels, one_hot};
-use rust_ml::loss::cross_entropy::{cross_entropy, d_cross_entropy};
-use rust_ml::nn::activation::{ActivationKind::Relu, ActivationLayer};
-use rust_ml::nn::linear::LinearLayer;
-use rust_ml::nn::network::Network;
-use rust_ml::optimiser::adam::Adam;
-use rust_ml::utils::batch::{slice_batch, stack_tensors, BatchIterator};
+use mentats::data::mnist::{load_images, load_labels, one_hot};
+use mentats::loss::cross_entropy::{cross_entropy, d_cross_entropy};
+use mentats::nn::activation::{ActivationKind::Relu, ActivationLayer};
+use mentats::nn::linear::LinearLayer;
+use mentats::nn::network::Network;
+use mentats::optimiser::adam::Adam;
+use mentats::utils::batch::{slice_batch, stack_tensors, BatchIterator};
 use std::fs::create_dir_all;
 use std::time::Instant;
 

@@ -1,9 +1,9 @@
-use rust_ml::loss::mse::{d_mse, mse};
-use rust_ml::nn::activation::{ActivationKind::Sigmoid, ActivationLayer};
-use rust_ml::nn::linear::LinearLayer;
-use rust_ml::nn::network::Network;
-use rust_ml::optimiser::adam::Adam;
-use rust_ml::tensor::Tensor;
+use mentats::loss::mse::{d_mse, mse};
+use mentats::nn::activation::{ActivationKind::Sigmoid, ActivationLayer};
+use mentats::nn::linear::LinearLayer;
+use mentats::nn::network::Network;
+use mentats::optimiser::adam::Adam;
+use mentats::tensor::Tensor;
 
 fn main() {
     let mut network = Network::new(vec![

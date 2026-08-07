@@ -1,8 +1,8 @@
 use std::vec;
 
-use rust_ml::nn::activation::{relu, sigmoid, tanh};
-use rust_ml::nn::linear::LinearLayer;
-use rust_ml::tensor::Tensor;
+use mentats::nn::activation::{relu, sigmoid, tanh};
+use mentats::nn::linear::LinearLayer;
+use mentats::tensor::Tensor;
 
 fn main() {
     let w = Tensor::rand_range(vec![3, 3], -10.0, 10.0);

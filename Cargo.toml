@@ -1,5 +1,5 @@
 [package]
-name = "rust_ml"
+name = "mentats"
 version = "0.1.0"
 edition = "2021"
 
