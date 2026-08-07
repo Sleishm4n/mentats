@@ -1,7 +1,7 @@
-//! Optimisation 
-//! 
+//! Optimisation
+//!
 //! Changes weights and learning rate during training of the model
-//! 
+//!
 //! - [`adam`] - the main optimiser, an implementation of Adam optimiser from original paper
 
 use crate::tensor::Tensor;
@@ -9,7 +9,7 @@ use crate::tensor::Tensor;
 pub mod adam;
 
 /// Defines the interface for paramter optimisation algs
-/// 
+///
 /// # Arguments
 ///
 /// * `params` - Mutable references to the model parameters that will be updated.

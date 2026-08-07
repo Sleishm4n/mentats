@@ -2,7 +2,7 @@
 //!
 //! This module has no dependency on `nn` or `loss`, it's the base layer
 //! everything else builds on.
- 
+
 /// A dense, row-major, N-dimensional array of `f32`.
 ///
 /// `shape` and `strides` must stay consistent with each other and with the
@@ -86,7 +86,7 @@ impl Tensor {
         let flat_index = self.flat(index);
         self.data[flat_index]
     }
- 
+
     /// Sets the element at the given multi-dimensional `index` to `val`.
     ///
     /// # Panics
@@ -108,7 +108,7 @@ impl Tensor {
         let flat_index = self.flat(index);
         self.data[flat_index] = val;
     }
- 
+
     /// Builds a tensor from a flat `Vec<f32>` and an explicit shape.
     ///
     /// # Panics
@@ -127,7 +127,7 @@ impl Tensor {
             data,
         }
     }
- 
+
     /// Prints the tensor's shape, strides, and data to stdout.
     pub fn display(&self) {
         println!(
