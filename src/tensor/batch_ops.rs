@@ -59,7 +59,7 @@ impl Tensor {
 
     /// Broadcast matrix multiply: `[m, n] @ [batch, n, p] -> [batch, m, p]`
     ///
-    /// The mirror of `[Tensor::matmul_batched]`, here the *left* opreand
+    /// The mirror of [`Tensor::matmul_batched`], here the *left* opreand
     /// is shared across the batch. Used on the backwards pass, where a single
     /// weight matrix is applied to a batch of upstream gradients
     ///

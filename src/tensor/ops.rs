@@ -62,7 +62,7 @@ impl Tensor {
 
     /// 2D matric multiplication: `[m, n] @ [n, p] -> [m, p]`
     ///
-    /// For batched inputs use `[Tensor::matmul_batched]` or `[Tensor::matmul_batched_broadcast]`
+    /// For batched inputs use [`Tensor::matmul_batched`] or [`Tensor::matmul_batched_broadcast`]
     /// instead.
     ///
     /// # Panics
@@ -208,7 +208,7 @@ impl Tensor {
         Tensor::from_vec(vec![left_len + right_len, 1], data)
     }
 
-    /// Batched version of `[Tensor::concat_features_2d]`
+    /// Batched version of [`Tensor::concat_features_2d`]
     ///
     /// Concatenates along the feature axis:
     /// `[batch, a, 1]` and `[batch, b, 1]` -> `[batch, a + b, 1]`
@@ -250,7 +250,7 @@ impl Tensor {
     /// Keeps the first `keep` features of a `[batch, features, 1]` tensor,
     /// dropping the rest
     ///
-    /// The inverse of `[Tensor::concat_features_batch]` on the backwards pass:
+    /// The inverse of [`Tensor::concat_features_batch`] on the backwards pass:
     /// gradients flowing back through a concatenated input are trimmed to the
     /// slice that belongs to the upstream layer
     ///

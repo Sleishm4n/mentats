@@ -9,7 +9,7 @@ use crate::{optimiser::Optimiser, tensor::Tensor};
 /// step counter `t`, which matters most in the first few steps while the
 /// moments are warming up from zero
 ///
-/// The moment vectors are allocated lazily on the first `[Optimiser::step]`
+/// The moment vectors are allocated lazily on the first [`Optimiser::step`]
 /// matching the shapes of the parameters passed in
 ///
 /// # Example

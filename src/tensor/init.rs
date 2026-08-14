@@ -1,6 +1,6 @@
-//! Random initialisation constructors for `[Tensor]`
+//! Random initialisation constructors for [`Tensor`]
 //!
-//! Layer specific checmes (Xavier, Kaiming) live in `[crate::nn::init]` and
+//! Layer specific checmes (Xavier, Kaiming) live in [`crate::nn::init`] and
 //! are built on top of these primitives
 use crate::tensor::Tensor;
 use rand::prelude::*;
