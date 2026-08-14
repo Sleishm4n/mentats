@@ -1,3 +1,14 @@
+//! KL divergence between the encoder's latent distribution and a standard
+//! normal prior, with a free-bits floor
+//!
+//! This is the regularisation half of the VAE objective. All three public
+//! functions accept both unbatched (`[latent_dim, 1]`) and batched
+//! (`[batch, latent_dim, 1]`) `mu` / `log_var` tensors, and average
+//! over the batch
+//!
+//! The free-bits scheme ([`FREE_BITS_TAU`]) is what prevents posterior
+//! collapse: without it the cheapest way to cut the KL term is to drive
+//! every latent dim to the prior and let decoder ignore `z`
 use crate::tensor::Tensor;
 
 /// Free bits threshold, in nats per latent dimension. Dimensions whose
@@ -43,6 +54,16 @@ fn free_bits_mask(mu: &Tensor, log_var: &Tensor) -> Vec<f32> {
         .collect()
 }
 
+/// KL divergence from `N(mu, exp(log_var))` to `N(0, 1)`, summed over latent
+/// dimensions and averaged over the batch
+///
+/// Each dimension's contribution has [`FREE_BITS_TAU`] subtracted and is
+/// floored at zero, so dimensions already close to the prior contribute
+/// nothing
+///
+/// # Panics
+///
+/// Panics if `mu` and `log_var` have different shapes
 pub fn kl_divergence(mu: &Tensor, log_var: &Tensor) -> f32 {
     assert_eq!(
         mu.shape, log_var.shape,
@@ -55,8 +76,10 @@ pub fn kl_divergence(mu: &Tensor, log_var: &Tensor) -> f32 {
         .sum()
 }
 
-/// Note: now takes log_var as well as mu, since the free-bits mask depends
-/// on both — this is a signature change from the pre-free-bits version.
+/// Gradient of [`kl_divergence`] with respect to `mu`
+///
+// / Note: now takes log_var as well as mu, since the free-bits mask depends
+// / on both — this is a signature change from the pre-free-bits version.
 pub fn d_kl_divergence_mu(mu: &Tensor, log_var: &Tensor) -> Tensor {
     let (batch_size, latent_dim) = if mu.shape.len() == 3 {
         (mu.shape[0], mu.shape[1])
@@ -76,6 +99,8 @@ pub fn d_kl_divergence_mu(mu: &Tensor, log_var: &Tensor) -> Tensor {
     Tensor::from_vec(mu.shape.clone(), data)
 }
 
+/// Gradient of [`kl_divergence`] with respect to `log_var`
+///
 /// Note: signature change — mu is now required alongside log_var for the mask.
 pub fn d_kl_divergence_log_var(mu: &Tensor, log_var: &Tensor) -> Tensor {
     let (batch_size, latent_dim) = if log_var.shape.len() == 3 {

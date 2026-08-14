@@ -1,5 +1,19 @@
+//! Cross-entropy losses for classification
+//!
+//! [`cross_entropy`] and [`d_cross_entropy`] apply softmax internally
+//! so they take **raw logits**, not the output of a
+//! [`crate::nn::softmax::SoftmaxLayer`]. Folding softmax into the loss
+//! is both numerically stabler and simpler on the backward pass
 use crate::tensor::Tensor;
 
+/// Softmax cross-entropy loss for a one-hot `target`
+///
+/// `output` is expected to be in raw logits. A small epsilon is added inside
+/// the log to avoid `ln(0)`
+///
+/// # Panics
+///
+/// Panics if `target` has fewer elements than `output`
 pub fn cross_entropy(output: &Tensor, target: &Tensor) -> f32 {
     let max = output.tensor_max();
     let exps = output.map(|x| (x - max).exp());
@@ -15,6 +29,14 @@ pub fn cross_entropy(output: &Tensor, target: &Tensor) -> f32 {
     -loss
 }
 
+/// Gradient of [`cross_entropy`] with respect to the logits
+///
+/// Because softmax and cross-entropy are combined, ther derivative
+/// simplifies to `softmax(output) - target`
+///
+/// # Panics
+///
+/// Panics if the shapes differ
 pub fn d_cross_entropy(output: &Tensor, target: &Tensor) -> Tensor {
     let max = output.tensor_max();
     let exps = output.map(|x| (x - max).exp());
@@ -25,6 +47,17 @@ pub fn d_cross_entropy(output: &Tensor, target: &Tensor) -> Tensor {
     probs.zip_map(target, |p, y| p - y)
 }
 
+/// Binary cross-entropy over sigmoid-activated `logits`, averaged over all
+/// elements
+///
+/// Takes raw logits and applies the sigmoid internally, clamping the
+/// probability away from 0 and 1 to keep the logs finite. Suitable as the
+/// reconstruction term for models whose targets are pixel intensities in
+/// `[0, 1]`
+///
+/// # Panics
+///
+/// Panics if `target` has fewer elements than `logits`
 pub fn binary_cross_entropy(logits: &Tensor, target: &Tensor) -> f32 {
     let n = logits.data.len() as f32;
     let mut loss: f32 = 0.0;
