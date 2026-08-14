@@ -36,3 +36,6 @@ data/svhn/
 
 # VAE outputs
 outputs/
+
+# ci runner
+ci.ps1

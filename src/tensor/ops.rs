@@ -1,20 +1,39 @@
+//! Elementwise, shape and lin-alg operations on [`Tensor`]
+//!
+//! Everything is implemented on the flat data buffer
+//! Ops that change layout ([`Tensor::permute`]) rewrite the
+//! strides rather than the data, meaning they are cheap
 use std::assert_eq;
 
 use crate::tensor::Tensor;
 
 impl Tensor {
+    /// Elementwise add. Both tensors need the same shape
+    ///
+    /// # Panics
+    ///
+    /// Panics if the shapes differ
     pub fn add(&self, other: &Tensor) -> Tensor {
         self.zip_map(other, |a, b| a + b)
     }
 
+    /// Elementwise subtraction (`self - other`). Both tensors must have the same shape
+    ///
+    /// # Panics
+    ///
+    /// Panics if shapes differ
     pub fn sub(&self, other: &Tensor) -> Tensor {
         self.zip_map(other, |a, b| a - b)
     }
 
+    /// Multiples every element by scalar `n`
     pub fn scale(&self, n: f32) -> Tensor {
         self.map(|x| x * n)
     }
 
+    /// Returns the largest element in the tensor
+    ///
+    /// Returns `-f32::INFINITY` for an emnpty tensor
     pub fn tensor_max(&self) -> f32 {
         let mut max = -f32::INFINITY;
 
@@ -26,6 +45,9 @@ impl Tensor {
         max
     }
 
+    /// Returns the smallest element in the tensor
+    ///
+    /// Returns `-f32::INFINITY` for an emnpty tensor
     pub fn tensor_min(&self) -> f32 {
         let mut min = f32::INFINITY;
 
@@ -38,6 +60,15 @@ impl Tensor {
         min
     }
 
+    /// 2D matric multiplication: `[m, n] @ [n, p] -> [m, p]`
+    ///
+    /// For batched inputs use `[Tensor::matmul_batched]` or `[Tensor::matmul_batched_broadcast]`
+    /// instead.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `self` is not rank 2, or if the inner dims don't match
+    /// (`self.shape[1] != other.shape[1]`)
     pub fn matmul(&self, other: &Tensor) -> Tensor {
         assert!(self.shape.len() == 2);
         assert!(self.shape[1] == other.shape[0]);
@@ -57,10 +88,24 @@ impl Tensor {
         c
     }
 
+    /// Swaps the two axes of a rank 2 tensor. Shorthand for `permute(&[1, 0])`
+    ///
+    /// # Panics
+    ///
+    /// Panics if tensor is not rank 2
     pub fn transpose(&self) -> Tensor {
         self.permute(&[1, 0])
     }
 
+    /// Reorders the tensor's axes
+    ///
+    /// `axes[i]` is the axis of `self` that becomes axis `i` of the result.
+    /// Only the shape and strides are rewritten, the underlying data is copied as is,
+    /// so returned tensor may be non=contiguous
+    ///
+    /// # Panics
+    ///
+    /// Panics if `axes` is not the same length as the tensor's rank
     pub fn permute(&self, axes: &[usize]) -> Tensor {
         assert_eq!(
             axes.len(),
@@ -87,6 +132,7 @@ impl Tensor {
         }
     }
 
+    /// Applies `f` to every element, returning a new tensor of the same shape
     pub fn map<F: Fn(f32) -> f32>(&self, f: F) -> Tensor {
         let mut result = Tensor::new(self.shape.clone());
         let mut index = vec![0; self.shape.len()];
@@ -103,6 +149,12 @@ impl Tensor {
         result
     }
 
+    /// Apples `f` to each pair of corresponding elements from `self` and
+    /// `other`, returning a new tensor of the same shape
+    ///
+    /// # Panics
+    ///
+    /// Panics if shapes differ
     pub fn zip_map<F: Fn(f32, f32) -> f32>(&self, other: &Tensor, f: F) -> Tensor {
         assert_eq!(self.shape, other.shape);
 
@@ -133,10 +185,16 @@ impl Tensor {
         false
     }
 
+    /// Squares every element `(x * x)`, returns a new tensor
     pub fn elementwise_square(&self) -> Tensor {
         self.map(|x| x * x)
     }
 
+    /// Concatenates two unbatched tensors into a single `[features, 1]` column vector
+    ///
+    /// Used to glue a latent vector onto a one-hot class label for conditional
+    /// models. Accepts any 1D or 2D input shape (`[N]`, `[N, 1]` or `[1, N]`)
+    /// and always normalises the result to a column vector
     pub fn concat_features_2d(&self, other: &Tensor) -> Tensor {
         // Accepts any 1D or 2D shape ([N], [N, 1], or [1, N])
         // and returns a normalized [features, 1] column vector.
@@ -150,6 +208,15 @@ impl Tensor {
         Tensor::from_vec(vec![left_len + right_len, 1], data)
     }
 
+    /// Batched version of `[Tensor::concat_features_2d]`
+    ///
+    /// Concatenates along the feature axis:
+    /// `[batch, a, 1]` and `[batch, b, 1]` -> `[batch, a + b, 1]`
+    ///
+    /// # Panics
+    ///
+    /// Panics if either tensor is not rank 3, if the batch sizes are different
+    /// or if either final dimension is not 1
     pub fn concat_features_batch(&self, other: &Tensor) -> Tensor {
         assert_eq!(
             self.shape.len(),
@@ -180,6 +247,17 @@ impl Tensor {
         Tensor::from_vec(vec![batch, left_features + right_features, 1], data)
     }
 
+    /// Keeps the first `keep` features of a `[batch, features, 1]` tensor,
+    /// dropping the rest
+    ///
+    /// The inverse of `[Tensor::concat_features_batch]` on the backwards pass:
+    /// gradients flowing back through a concatenated input are trimmed to the
+    /// slice that belongs to the upstream layer
+    ///
+    /// # Panics
+    ///
+    /// Panics if the tensor is not rank 3, if the trailing dimensions in not 1
+    /// or if `keep` exceeds the number of features
     pub fn take_first_features_batch(&self, keep: usize) -> Tensor {
         assert_eq!(
             self.shape.len(),

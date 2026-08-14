@@ -1,7 +1,17 @@
+//! Random initialisation constructors for `[Tensor]`
+//!
+//! Layer specific checmes (Xavier, Kaiming) live in `[crate::nn::init]` and
+//! are built on top of these primitives
 use crate::tensor::Tensor;
 use rand::prelude::*;
 
 impl Tensor {
+    /// Creates a tensor of the given `shape` filled with values drawn
+    /// uniformly from `[min, max)`
+    ///
+    /// # Panics
+    ///
+    /// Panics if `min >= max` or if `shape` is empty
     pub fn rand_range(shape: Vec<usize>, min: f32, max: f32) -> Tensor {
         assert!(min < max, "min cannot be larger than max");
         assert!(!shape.is_empty(), "shape must be at least 1D");

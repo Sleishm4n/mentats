@@ -1,6 +1,21 @@
+//! Batched tensor operations
+//!
+//! Layers run over a whole mini-batch at once, whcih means one rank 3
+//! `[batch, features, 1]` tensor rather than a `Vec` of rank 2 samples
+//! These helpers provide the batched matmuls and batch-axis reduction that
+//! the forward and backwards passes need
 use crate::tensor::Tensor;
 
 impl Tensor {
+    /// Batched matrix multiply: `[batch, m, n] @ [n, p] -> [batch, m, p]`
+    ///
+    /// `other` is shared across every batch element, this is the shape used when
+    /// multiplying a batch of activations by a weight matrix
+    ///
+    /// # Panics
+    ///
+    /// Panics if `self` if not rank 3, `other` is not rank 2, ot the inner dims
+    /// don't match
     pub fn matmul_batched(&self, other: &Tensor) -> Tensor {
         assert!(
             self.shape.len() == 3 && other.shape.len() == 2,
@@ -42,6 +57,16 @@ impl Tensor {
         result
     }
 
+    /// Broadcast matrix multiply: `[m, n] @ [batch, n, p] -> [batch, m, p]`
+    ///
+    /// The mirror of `[Tensor::matmul_batched]`, here the *left* opreand
+    /// is shared across the batch. Used on the backwards pass, where a single
+    /// weight matrix is applied to a batch of upstream gradients
+    ///
+    /// # Panics
+    ///
+    /// Panics if `self` is not rank 2, `other` is not rank 3 or the inner
+    /// dims don't match
     pub fn matmul_batched_broadcast(&self, other: &Tensor) -> Tensor {
         assert!(
             self.shape.len() == 2 && other.shape.len() == 3,
@@ -84,6 +109,16 @@ impl Tensor {
         result
     }
 
+    /// Sums over the leading (batch) axis, returning a tensor with shape
+    /// `self.shape[1..]`
+    ///
+    /// Used to accumulate per-sample parameter gradients into a single
+    /// gradient for the batch. A rank 1 input has no separate batch azis
+    /// and collapes to a `[1]` scalar tensor
+    ///
+    /// # Panics
+    ///
+    /// Panics if the tensor has no dimensions
     pub fn sum_batch(&self) -> Tensor {
         assert!(
             !self.shape.is_empty(),
