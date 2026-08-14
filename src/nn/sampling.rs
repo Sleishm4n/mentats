@@ -1,3 +1,5 @@
+//! Stochastic sampling layer for variational models.
+
 use crate::{
     nn::Layer,
     tensor::Tensor,
@@ -9,14 +11,30 @@ use std::{
     vec,
 };
 
+/// The reparameterisation trick as a layer: `z = mu + exp(0.5 * log_var) * eps`.
+///
+/// Expects an input of `latent_dim * 2` features, the first half read as `mu`
+/// and the second half as `log_var`, and outputs `latent_dim` sampled values.
+/// Sampling `eps` from a fixed standard normal keeps the randomness *outside*
+/// the computation graph, so gradients flow cleanly back to `mu` and
+/// `log_var`.
+///
+/// `mu`, `log_var`, and `eps` are cached on the forward pass because the
+/// backward pass needs the same noise draw it used going forward.
 pub struct GaussianSampler {
+    /// Number of latent dimensions produced (half the input feature count).
     pub latent_dim: usize,
+    /// Mean half of the last input.
     pub mu: Option<Tensor>,
+    /// Log-variance half of the last input.
     pub log_var: Option<Tensor>,
+    /// Noise drawn on the last forward pass.
     pub eps: Option<Tensor>,
 }
 
 impl GaussianSampler {
+    /// Creates a sampler producing `latent_dim` values from `latent_dim * 2`
+    /// inputs.
     pub fn new(latent_dim: usize) -> Self {
         Self {
             latent_dim,
@@ -26,11 +44,26 @@ impl GaussianSampler {
         }
     }
 
+    /// Reads a layer back from `reader`, assuming the [`TAG_SAMPLER`] byte has
+    /// already been consumed.
+    ///
+    /// Only `latent_dim` is durable state, the cached tensors are rebuilt on
+    /// the next forward pass.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the stream ends early.
     pub fn load(reader: &mut dyn Read) -> io::Result<Self> {
         let latent_dim = read_u32(reader)? as usize;
         Ok(Self::new(latent_dim))
     }
 
+    /// Draws `size` samples from a standard normal, returned as a `[size, 1]`
+    /// tensor.
+    ///
+    /// Uses the Box-Muller transform over the crate's uniform RNG. Public so
+    /// that generation code can sample a latent vector to feed straight into a
+    /// trained decoder.
     pub fn sample_standard_normal(size: usize) -> Tensor {
         let mut rng = rand::thread_rng();
         let mut data = Vec::with_capacity(size);
@@ -49,6 +82,15 @@ impl GaussianSampler {
         Tensor::from_vec(vec![size, 1], data)
     }
 
+    /// Splits a `[latent_dim*2, 1]` or `[batch, latent_dim*2, 1]` input into
+    /// its `mu` and `log_var` halves.
+    ///
+    /// Returns `(mu, log_var, batch_size, is_batched)`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the feature dimension is not `latent_dim * 2`, or if the
+    /// input is neither rank-2 nor rank-3.
     fn split_input(&self, input: &Tensor) -> (Tensor, Tensor, usize, bool) {
         match input.shape.len() {
             2 => {

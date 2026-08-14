@@ -1,3 +1,4 @@
+//! Layer that flattens a multi-dimensional tensor into a column vector
 use std::io::{self, Read, Write};
 
 use crate::{
@@ -6,6 +7,12 @@ use crate::{
     utils::model_io::{write_u8, TAG_FLATTEN},
 };
 
+/// Collapses an input of any shape into a `[elements, 1]` column vector, and
+/// restores the original shape on the backward pass
+///
+/// Used to bridge image-shaped data (`[28, 28]`) into the column vectors that
+/// [`crate::nn::linear::LinearLayer`] expects. It has no parameters, the input
+/// shape it records is only forward pass cache
 pub struct FlattenLayer {
     input_shape: Option<Vec<usize>>,
 }
@@ -17,11 +24,20 @@ impl Default for FlattenLayer {
 }
 
 impl FlattenLayer {
+    /// Creates a new flatten layer
     pub fn new() -> Self {
         Self { input_shape: None }
     }
 
-    /// input_shape is just forward-pass cache, not durable state.
+    /// Reads a layer back from `reader`, assuming that the [`TAG_FLATTEN`] byte
+    /// has already been consumed
+    ///
+    /// Nothing is actually read: `input_shape` is just forward pass cache, not
+    /// durable state
+    ///
+    /// # Errors
+    ///
+    /// Never returns an error, the signature matches the other layer loaders
     pub fn load(_reader: &mut dyn Read) -> io::Result<FlattenLayer> {
         Ok(FlattenLayer::new())
     }

@@ -1,3 +1,5 @@
+//! Layer that reshapes a tensor to a fixed target shape.
+
 use std::io::{self, Read, Write};
 
 use crate::{
@@ -6,12 +8,24 @@ use crate::{
     utils::model_io::{read_shape, write_shape, write_u8, TAG_RESHAPE},
 };
 
+/// Reinterprets a tensor as `output_shape`, keeping the element count fixed.
+///
+/// The counterpart to [`crate::nn::flatten::FlattenLayer`], typically used at
+/// the end of a decoder to turn a flat `[784, 1]` vector back into a `[28, 28]`
+/// image. The backward pass reverses the reshape.
 pub struct ReshapeLayer {
+    /// The shape produced by the forward pass.
     pub output_shape: Vec<usize>,
+    /// Input shape cached by the last forward pass, restored on backward.
     pub input_shape: Option<Vec<usize>>,
 }
 
 impl ReshapeLayer {
+    /// Creates a layer that reshapes its input to `output_shape`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `output_shape` is empty.
     pub fn new(output_shape: Vec<usize>) -> Self {
         assert!(!output_shape.is_empty(), "output_shape cannot be empty");
         Self {
@@ -20,8 +34,15 @@ impl ReshapeLayer {
         }
     }
 
-    /// output_shape is the one bit of config this layer needs to
-    /// reconstruct; input_shape is just forward-pass cache.
+    /// Reads a layer back from `reader`, assuming the [`TAG_RESHAPE`] byte has
+    /// already been consumed.
+    ///
+    /// `output_shape` is the one bit of config this layer needs to
+    /// reconstruct; `input_shape` is just forward-pass cache.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the stream ends early or the shape is malformed.
     pub fn load(reader: &mut dyn Read) -> io::Result<ReshapeLayer> {
         let output_shape = read_shape(reader)?;
         Ok(ReshapeLayer::new(output_shape))

@@ -1,3 +1,4 @@
+//! Fully connected (dense) layer
 use std::{
     io::{self, Read, Write},
     vec,
@@ -10,18 +11,36 @@ use crate::{
     utils::model_io::{read_tensor, write_tensor, write_u8, TAG_LINEAR},
 };
 
+/// A fully connected layer computing `y = W x + b`.
+///
+/// Weights are stored as `[out_features, in_features]` and the bias as
+/// `[out_features, 1]`. The layer accepts either a single `[in_features, 1]`
+/// sample or a `[batch, in_features, 1]` mini-batch, and caches its inputs
+/// plus the most recent parameter gradients for the backward pass
 #[derive(Clone)]
 pub struct LinearLayer {
+    /// Weight matrix, shape `[out_features, in_features]`
     pub weight: Tensor,
+    /// Bias column vector, shape `[out_features, 1]`
     pub bias: Tensor,
+    /// Size of the expected input feature dimension
     pub in_features: usize,
+    /// Size of the expected output feature dimension
     pub out_features: usize,
+    /// Input cached by the last forward pass, needed to comput `dW`
     pub input: Option<Tensor>,
+    /// Weight gradient from the last backward pass
     pub d_weight: Option<Tensor>,
+    /// Bias gradient from the last backward pass
     pub d_bias: Option<Tensor>,
 }
 
 impl LinearLayer {
+    /// Creates a layer with all weights and biases set tom zero
+    ///
+    /// Zero weights make the layer symmetric and untrainable, so this is
+    /// mainly useful for tests and for loading parameters in afterwards
+    /// Prefer [`LinearLayer::new_rand`] or [`LinearLayer::new_kaiming`]
     pub fn new(in_features: usize, out_features: usize) -> LinearLayer {
         LinearLayer {
             weight: Tensor::new(vec![out_features, in_features]),
@@ -34,6 +53,10 @@ impl LinearLayer {
         }
     }
 
+    /// Creates a layer with Xavier uniform weights and zero biases
+    ///
+    /// The default choice for layers followed by a symmetric activation
+    /// such as sigmoid or tanh
     pub fn new_rand(in_features: usize, out_features: usize) -> LinearLayer {
         LinearLayer {
             weight: xavier_uniform(in_features, out_features),
@@ -46,6 +69,10 @@ impl LinearLayer {
         }
     }
 
+    /// Creates a layer with Kaiming normal weights and zero biases
+    ///
+    /// Preferred for layers followed by ReLU, which halves the variance
+    /// that Xaiver assumes is preserved
     pub fn new_kaiming(in_features: usize, out_features: usize) -> LinearLayer {
         LinearLayer {
             weight: kaiming_normal(in_features, out_features),
@@ -58,6 +85,15 @@ impl LinearLayer {
         }
     }
 
+    /// Computes `W x + b`, caching `input` for the backward pass
+    ///
+    /// Accepts an unbatched `[in_features, 1]` tensor or a batched
+    /// `[batch, in_features, 1]` tensor, the bias is broadcast across
+    /// the batch in the latter
+    ///
+    /// # Panics
+    ///
+    /// Panics if `input` is neither rank 2 or 3
     pub fn forward(&mut self, input: &Tensor) -> Tensor {
         self.input = Some(input.clone());
 
@@ -88,6 +124,16 @@ impl LinearLayer {
         broadcasted
     }
 
+    /// Unbatched backward pass returning `(d_weight, d_bias, d_input)`
+    ///
+    /// Unlike [`Layer::backward_pass`] this does not store the gradients on
+    /// the layer, it hands them back to the caller. Used by
+    /// [`crate::utils::grad_check`] to compare against numerical gradients
+    ///
+    /// # Panics
+    ///
+    /// Panics if no forward pass has been run yet, or if the cached input is
+    /// not rank 2
     pub fn backward(&self, d_output: &Tensor) -> (Tensor, Tensor, Tensor) {
         let d_w = d_output.matmul(&self.input.as_ref().unwrap().transpose());
         let d_b = d_output.clone();
@@ -95,10 +141,19 @@ impl LinearLayer {
         (d_w, d_b, d_x)
     }
 
+    /// Borrows the layer's weight matrix and bias vector
     pub fn get_weights_and_bias(&self) -> (&Tensor, &Tensor) {
         (&self.weight, &self.bias)
     }
 
+    /// Reads a layer back from `reader`, assuming the [`TAG_LINEAR`] byte has
+    /// already been consumed
+    ///
+    /// The feature dimensions are recovered from the weight matrix shape
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the stream ends early or is malformed
     pub fn load(reader: &mut dyn Read) -> io::Result<LinearLayer> {
         let weight = read_tensor(reader)?;
         let bias = read_tensor(reader)?;

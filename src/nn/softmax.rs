@@ -1,3 +1,5 @@
+//! Softmax layer, converting scores into a probability distribution.
+
 use std::io::{self, Read, Write};
 
 use crate::{
@@ -6,7 +8,13 @@ use crate::{
     utils::model_io::{write_u8, TAG_SOFTMAX},
 };
 
+/// Normalises its input into a probability distribution that sums to 1.
+///
+/// Computed with the max-subtraction trick for numerical stability. Intended
+/// to sit at the end of a classifier, paired with
+/// [`crate::loss::cross_entropy`]. It has no trainable parameters.
 pub struct SoftmaxLayer {
+    /// Input cached by the last forward pass.
     pub input: Option<Tensor>,
 }
 
@@ -17,10 +25,19 @@ impl Default for SoftmaxLayer {
 }
 
 impl SoftmaxLayer {
+    /// Creates a new softmax layer.
     pub fn new() -> Self {
         SoftmaxLayer { input: None }
     }
 
+    /// Reads a layer back from `reader`, assuming the [`TAG_SOFTMAX`] byte has
+    /// already been consumed.
+    ///
+    /// Nothing is actually read, the layer carries no durable state.
+    ///
+    /// # Errors
+    ///
+    /// Never returns an error, the signature matches the other layer loaders.
     pub fn load(_reader: &mut dyn Read) -> io::Result<SoftmaxLayer> {
         Ok(SoftmaxLayer::new())
     }

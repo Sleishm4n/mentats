@@ -1,6 +1,21 @@
+//! Weight initialisation
+//!
+//! Both schemes scale the intial weights so that activation variance is
+//! roughly preserved layer to layer, which stops deep stacks from saturating
+//! or exploding before training starts. Pick based on the activation that follows:
+//! Xavier for sigmoid/tanh, Kaiming for ReLU
 use crate::tensor::Tensor;
 use rand::Rng;
 
+/// Xavier/Glorto uniform initialisation
+///
+/// Samples uniformly from `[-limit, limit]` where
+/// `limit = sqrt(6 / (in_features + out_features))`. Returns a tensor of
+/// shape `[out_features, in_features]`
+///
+/// # Panics
+///
+/// Panics if either dimension is zero
 pub fn xavier_uniform(in_features: usize, out_features: usize) -> Tensor {
     assert!(in_features > 0, "in_features must be > 0");
     assert!(out_features > 0, "out_features must be > 0");
@@ -10,6 +25,15 @@ pub fn xavier_uniform(in_features: usize, out_features: usize) -> Tensor {
     Tensor::rand_range(vec![out_features, in_features], -limit, limit)
 }
 
+/// Kaiming/He uniform initialisation
+///
+/// Samples from a normal distribution with standard deviation
+/// `sqrt(2 / in_features)`. The factor of 2 compensates for ReLU zeroing half
+/// its inputs. Returns a tensor of shape `[out_features, in_features]`
+///
+/// # Panics
+///
+/// Panics if either dimension is zero
 pub fn kaiming_normal(in_features: usize, out_features: usize) -> Tensor {
     assert!(in_features > 0, "in_features must be > 0");
     assert!(out_features > 0, "out_features must be > 0");
