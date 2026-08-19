@@ -138,7 +138,7 @@ fn gradient_check_passes_for_linear_layer() {
     let input = Tensor::from_vec(vec![3, 1], vec![0.5, -0.3, 0.8]);
     let target = Tensor::from_vec(vec![2, 1], vec![1.0, 0.0]);
     // eps=1e-4 is near-optimal for f32 (sqrt of machine epsilon ~1.2e-7)
-    gradient_check(&layer, &input, &target, 1e-3);
+    gradient_check(&mut layer, &input, &target, 1e-3);
 }
 
 // Adam optimizer
