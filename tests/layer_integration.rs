@@ -88,10 +88,7 @@ fn sigmoid_output_in_range() {
     let input = Tensor::from_vec(vec![4, 1], vec![-100.0, -1.0, 1.0, 100.0]);
     let out = layer.forward_pass(&input);
     for &v in &out.data {
-        assert!(
-            v >= 0.0 && v <= 1.0 && v.is_finite(),
-            "sigmoid out of range: {v}"
-        );
+        assert!((0.0..=1.0).contains(&v), "sigmoid out of range: {v}");
     }
 }
 

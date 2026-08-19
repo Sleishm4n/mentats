@@ -29,12 +29,12 @@ fn per_dim_kl(mu: &Tensor, log_var: &Tensor) -> Vec<f32> {
     let mut per_dim = vec![0.0f32; latent_dim];
 
     for b in 0..batch_size {
-        for d in 0..latent_dim {
+        for (d, item) in per_dim.iter_mut().enumerate().take(latent_dim) {
             let idx = b * latent_dim + d;
             let m = mu.data[idx];
             let lv = log_var.data[idx];
             let var = lv.exp();
-            per_dim[d] += -0.5 * (1.0 + lv - m * m - var);
+            *item += -0.5 * (1.0 + lv - m * m - var);
         }
     }
 
@@ -78,8 +78,8 @@ pub fn kl_divergence(mu: &Tensor, log_var: &Tensor) -> f32 {
 
 /// Gradient of [`kl_divergence`] with respect to `mu`
 ///
-// / Note: now takes log_var as well as mu, since the free-bits mask depends
-// / on both — this is a signature change from the pre-free-bits version.
+/// Note: now takes log_var as well as mu, since the free-bits mask depends
+/// on both — this is a signature change from the pre-free-bits version.
 pub fn d_kl_divergence_mu(mu: &Tensor, log_var: &Tensor) -> Tensor {
     let (batch_size, latent_dim) = if mu.shape.len() == 3 {
         (mu.shape[0], mu.shape[1])
@@ -90,9 +90,9 @@ pub fn d_kl_divergence_mu(mu: &Tensor, log_var: &Tensor) -> Tensor {
 
     let mut data = Vec::with_capacity(mu.data.len());
     for b in 0..batch_size {
-        for d in 0..latent_dim {
+        for (d, &mask_value) in mask.iter().enumerate().take(latent_dim) {
             let idx = b * latent_dim + d;
-            data.push(mu.data[idx] * mask[d] / batch_size as f32);
+            data.push(mu.data[idx] * mask_value / batch_size as f32);
         }
     }
 
@@ -112,10 +112,10 @@ pub fn d_kl_divergence_log_var(mu: &Tensor, log_var: &Tensor) -> Tensor {
 
     let mut data = Vec::with_capacity(log_var.data.len());
     for b in 0..batch_size {
-        for d in 0..latent_dim {
+        for (d, &mask_value) in mask.iter().enumerate().take(latent_dim) {
             let idx = b * latent_dim + d;
             let lv = log_var.data[idx];
-            data.push(0.5 * (lv.exp() - 1.0) * mask[d] / batch_size as f32);
+            data.push(0.5 * (lv.exp() - 1.0) * mask_value / batch_size as f32);
         }
     }
 

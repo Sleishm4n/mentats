@@ -159,7 +159,8 @@ fn main() {
     println!("CVAE Training on MNIST");
     println!("========================================\n");
 
-    let batches_per_epoch = (images.len() + batch_size - 1) / batch_size;
+    // .div_ceil is same as (images.len() + batch_size - 1) / batch_size
+    let batches_per_epoch = images.len().div_ceil(batch_size);
     let total_warmup_steps = (total_warmup_epochs * batches_per_epoch as f32) as usize;
 
     for epoch in 0..epochs {
