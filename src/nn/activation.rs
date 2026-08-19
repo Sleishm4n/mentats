@@ -13,7 +13,9 @@ use crate::{
     utils::model_io::{read_u8, write_u8, TAG_ACTIVATION},
 };
 
-/// Rectified liner unit: `max(0, x)`
+pub const LEAKY_RELU_ALPHA: f32 = 0.01;
+
+/// Rectified linear unit: `max(0, x)`
 pub fn relu(x: f32) -> f32 {
     if x > 0.0 {
         x
@@ -22,12 +24,23 @@ pub fn relu(x: f32) -> f32 {
     }
 }
 
+/// Leaky Rectified linear unit (LReLU): `max(alpha * x, x)`
+///
+/// Uses [`LEAKY_RELU_ALPHA`] as `alpha`.
+pub fn leaky_relu(x: f32) -> f32 {
+    if x >= 0.0 {
+        x
+    } else {
+        LEAKY_RELU_ALPHA * x
+    }
+}
+
 /// Logistic sigmoid: `1 / (1 + e^-x)`. squashing to `(0, 1)`
 pub fn sigmoid(x: f32) -> f32 {
     1.0 / (1.0 + (-x).exp())
 }
 
-/// Hyberbolic tangent, squashing to `(-1, 1)`
+/// Hyperbolic tangent, squashing to `(-1, 1)`
 pub fn tanh(x: f32) -> f32 {
     (x.exp() - (-x).exp()) / (x.exp() + (-x).exp())
 }
@@ -38,6 +51,20 @@ pub fn d_relu(x: f32) -> f32 {
         1.0
     } else {
         0.0
+    }
+}
+
+/// Derivative of [`leaky_relu`].
+///
+/// Returns `1.0` for positive inputs and [`LEAKY_RELU_ALPHA`] for
+/// non-positive inputs. At `x = 0`, the derivative is undefined when
+/// `LEAKY_RELU_ALPHA != 1`, this implementation uses `LEAKY_RELU_ALPHA`
+/// by convention.
+pub fn d_leaky_relu(x: f32) -> f32 {
+    if x > 0.0 {
+        1.0
+    } else {
+        LEAKY_RELU_ALPHA
     }
 }
 
@@ -54,6 +81,7 @@ pub fn d_tanh(x: f32) -> f32 {
 const ACT_RELU: u8 = 0;
 const ACT_SIGMOID: u8 = 1;
 const ACT_TANH: u8 = 2;
+const ACT_LEAKY_RELU: u8 = 3;
 
 /// Which activation an [`ActivationLayer`] applies
 ///
@@ -68,6 +96,8 @@ pub enum ActivationKind {
     Sigmoid,
     /// [`tanh`]
     Tanh,
+    /// [`leaky_relu`]
+    LeakyRelu,
 }
 
 impl ActivationKind {
@@ -77,6 +107,7 @@ impl ActivationKind {
             ActivationKind::Relu => ACT_RELU,
             ActivationKind::Sigmoid => ACT_SIGMOID,
             ActivationKind::Tanh => ACT_TANH,
+            ActivationKind::LeakyRelu => ACT_LEAKY_RELU,
         }
     }
 
@@ -86,6 +117,7 @@ impl ActivationKind {
             ActivationKind::Relu => relu,
             ActivationKind::Sigmoid => sigmoid,
             ActivationKind::Tanh => tanh,
+            ActivationKind::LeakyRelu => leaky_relu,
         }
     }
 
@@ -95,6 +127,7 @@ impl ActivationKind {
             ActivationKind::Relu => d_relu,
             ActivationKind::Sigmoid => d_sigmoid,
             ActivationKind::Tanh => d_tanh,
+            ActivationKind::LeakyRelu => d_leaky_relu,
         }
     }
 }
@@ -129,6 +162,7 @@ impl ActivationLayer {
             ACT_RELU => ActivationKind::Relu,
             ACT_SIGMOID => ActivationKind::Sigmoid,
             ACT_TANH => ActivationKind::Tanh,
+            ACT_LEAKY_RELU => ActivationKind::LeakyRelu,
             other => {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
