@@ -22,7 +22,7 @@ pub struct Conv2DLayer {
     /// Kernel dimensions `(kh, kw)`
     pub kernel_size: (usize, usize),
     /// Input cached by last forward pass, needed for gradients computations
-    pub input: Option<Tensor>, // cached [`in_channels, h_in, w_in`]
+    pub input: Option<Tensor>, // cached `[in_channels, h_in, w_in]`
     /// Weight gradient from last backward pass
     pub d_weight: Option<Tensor>,
     /// Bias gradient from the last backward pass
@@ -139,6 +139,119 @@ impl Conv2DLayer {
         }
 
         output
+    }
+
+    /// Computes gradients with respect to bias, weight and input
+    ///
+    /// Caches `d_bias` and `d_weight` on the layer for optimiser updates
+    /// and returns `(d_weight, d_bias, d_input)`
+    ///
+    /// # Panics
+    ///
+    /// Panics if no forward pass has been run yet
+    pub fn backward(&mut self, d_output: &Tensor) -> (Tensor, Tensor, Tensor) {
+        let d_weight = self.weight_grad(d_output);
+        let d_bias = self.bias_grad(d_output);
+        let d_input = self.input_grad(d_output);
+
+        self.d_bias = Some(d_bias.clone());
+        self.d_weight = Some(d_weight.clone());
+
+        (d_weight, d_bias, d_input)
+    }
+
+    /// Computes the bias gradient by summing `d_output`
+    ///
+    /// Returns a tensor of shape `[out_channels, 1]`
+    fn bias_grad(&self, d_output: &Tensor) -> Tensor {
+        let out_h = d_output.shape[1];
+        let out_w = d_output.shape[2];
+        let mut d_bias = Tensor::new(vec![self.out_channels, 1]);
+        for oc in 0..self.out_channels {
+            let mut sum = 0.0;
+            for i in 0..out_h {
+                for j in 0..out_w {
+                    sum += d_output.get(&[oc, i, j]);
+                }
+            }
+            d_bias.set(&[oc, 0], sum);
+        }
+        d_bias
+    }
+
+    /// Computes filter weight gradients through cross-correlation of cached input
+    /// and `d_output`
+    ///
+    /// Returns a tensor of shape `[out_channels, in_channels, kh, kw]`
+    ///
+    /// # Panics
+    ///
+    /// Panics if `self.input` is `None` (forward pass was not called)
+    fn weight_grad(&self, d_output: &Tensor) -> Tensor {
+        let input = self
+            .input
+            .as_ref()
+            .expect("forward must be called before backward");
+        let (kh, kw) = self.kernel_size;
+        let out_h = d_output.shape[1];
+        let out_w = d_output.shape[2];
+        let mut d_weight = Tensor::new(vec![self.out_channels, self.in_channels, kh, kw]);
+
+        for oc in 0..self.out_channels {
+            for ic in 0..self.in_channels {
+                for ki in 0..kh {
+                    for kj in 0..kw {
+                        let mut sum = 0.0;
+                        for i in 0..out_h {
+                            for j in 0..out_w {
+                                let dout = d_output.get(&[oc, i, j]);
+                                let x = input.get(&[ic, i + ki, j + kj]);
+                                sum += dout * x;
+                            }
+                        }
+                        d_weight.set(&[oc, ic, ki, kj], sum);
+                    }
+                }
+            }
+        }
+        d_weight
+    }
+
+    /// Computes gradients with respect to the input tensor through scatter accumulation
+    ///
+    /// Returns a tensor of shape `[in_channels, h_in, w_in]`
+    ///
+    /// # Panics
+    ///
+    /// Panics if `self.input` is `None` (forward pass was not called)
+    fn input_grad(&self, d_output: &Tensor) -> Tensor {
+        let input = self
+            .input
+            .as_ref()
+            .expect("forward must be called before backward");
+        let (kh, kw) = self.kernel_size;
+        let h_in = input.shape[1];
+        let w_in = input.shape[2];
+        let out_h = d_output.shape[1];
+        let out_w = d_output.shape[2];
+        let mut d_input = Tensor::new(vec![self.in_channels, h_in, w_in]);
+        for oc in 0..self.out_channels {
+            for i in 0..out_h {
+                for j in 0..out_w {
+                    let dout = d_output.get(&[oc, i, j]);
+                    for ic in 0..self.in_channels {
+                        for ki in 0..kh {
+                            for kj in 0..kw {
+                                let w = self.weight.get(&[oc, ic, ki, kj]);
+                                let prev = d_input.get(&[ic, i + ki, j + kj]);
+                                d_input.set(&[ic, i + ki, j + kj], prev + dout * w);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        d_input
     }
 }
 
