@@ -85,6 +85,50 @@ pub fn kaiming_normal(in_features: usize, out_features: usize) -> Tensor {
     kaiming_normal_with_rng(in_features, out_features, &mut rng)
 }
 
+/// Kaiming/He normal initialisation for 2D convolution filters.
+///
+/// Samples from a normal distribution with standard deviation
+/// `sqrt(2 / (in_channels * kh * kw))`. Returns a 4D tensor of shape
+/// `[out_channels, in_channels, kh, kw]`.
+///
+/// # Panics
+///
+/// Panics if any dimension is zero.
+pub fn kaiming_normal_conv_with_rng<R: Rng + ?Sized>(
+    in_channels: usize,
+    out_channels: usize,
+    kh: usize,
+    kw: usize,
+    rng: &mut R,
+) -> Tensor {
+    assert!(in_channels > 0, "in_channels must be > 0");
+    assert!(out_channels > 0, "out_channels must be > 0");
+    assert!(kh > 0, "kh must be > 0");
+    assert!(kw > 0, "kw must be > 0");
+
+    let fan_in = in_channels * kh * kw;
+    let std = (2.0 / fan_in as f32).sqrt();
+    let size = out_channels * in_channels * kh * kw;
+    let mut data = Vec::with_capacity(size);
+
+    for _ in 0..size {
+        data.push(sample_standard_normal(rng) * std);
+    }
+
+    Tensor::from_vec(vec![out_channels, in_channels, kh, kw], data)
+}
+
+/// Convenience wrapper for [`kaiming_normal_conv_with_rng`] using [`rand::thread_rng`].
+pub fn kaiming_normal_conv(
+    in_channels: usize,
+    out_channels: usize,
+    kh: usize,
+    kw: usize,
+) -> Tensor {
+    let mut rng = rand::thread_rng();
+    kaiming_normal_conv_with_rng(in_channels, out_channels, kh, kw, &mut rng)
+}
+
 fn sample_standard_normal<R: Rng + ?Sized>(rng: &mut R) -> f32 {
     let u1 = loop {
         let cand: f32 = rng.gen_range(0.0..1.0);
@@ -143,5 +187,46 @@ mod tests {
             (variance - expected_var).abs() < 0.001,
             "variance was {variance}, expected {expected_var}"
         );
+    }
+
+    #[test]
+    fn test_kaiming_conv_shape_and_stats() {
+        let mut rng = StdRng::seed_from_u64(42);
+        let in_c = 16;
+        let out_c = 16;
+        let kh = 3;
+        let kw = 3;
+        let tensor = kaiming_normal_conv_with_rng(in_c, out_c, kh, kw, &mut rng);
+
+        assert_eq!(tensor.shape, vec![out_c, in_c, kh, kw]);
+        assert_eq!(tensor.data.len(), out_c * in_c * kh * kw);
+
+        // Check empirical statistics over 2304 samples
+        let n = tensor.data.len() as f32;
+        let mean: f32 = tensor.data.iter().sum::<f32>() / n;
+        let variance: f32 = tensor.data.iter().map(|&x| (x - mean).powi(2)).sum::<f32>() / n;
+        let empirical_std = variance.sqrt();
+
+        let fan_in = (in_c * kh * kw) as f32;
+        let expected_std = (2.0 / fan_in).sqrt();
+
+        assert!(mean.abs() < 0.05, "Mean was {mean}, expected near 0.0");
+        let rel_err = (empirical_std - expected_std).abs() / expected_std;
+        assert!(
+            rel_err < 0.15,
+            "Expected std {expected_std}, got {empirical_std} (err {rel_err})"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "in_channels must be > 0")]
+    fn test_kaiming_conv_panics_on_zero_in_channels() {
+        kaiming_normal_conv(0, 4, 3, 3);
+    }
+
+    #[test]
+    #[should_panic(expected = "kh must be > 0")]
+    fn test_kaiming_conv_panics_on_zero_kh() {
+        kaiming_normal_conv(4, 4, 0, 3);
     }
 }
