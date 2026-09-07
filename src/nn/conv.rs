@@ -2,7 +2,14 @@
 //!
 //! Performs valid 2D cross-correlation over unbatched 3D tensors:
 //! `[in_channels, height, width] -> [out_channels, out_h, out_w]`.
-use crate::{nn::init::kaiming_normal_conv, Tensor};
+use std::io::Read;
+use std::io::{self};
+
+use crate::{
+    nn::{init::kaiming_normal_conv, Layer},
+    utils::model_io::{read_tensor, write_tensor, write_u8, TAG_CONV2D},
+    Tensor,
+};
 
 /// A 2D convolutional layer computing valid cross-correlation
 ///
@@ -252,6 +259,67 @@ impl Conv2DLayer {
             }
         }
         d_input
+    }
+
+    pub fn load(reader: &mut dyn Read) -> io::Result<Conv2DLayer> {
+        let weight = read_tensor(reader)?;
+        let bias = read_tensor(reader)?;
+        let out_channels = weight.shape[0];
+        let in_channels = weight.shape[1];
+        let kernel_size = (weight.shape[2], weight.shape[3]);
+        Ok(Conv2DLayer {
+            weight,
+            bias,
+            in_channels,
+            out_channels,
+            kernel_size,
+            input: None,
+            d_weight: None,
+            d_bias: None,
+        })
+    }
+}
+
+impl Layer for Conv2DLayer {
+    fn forward_pass(&mut self, input: &Tensor) -> Tensor {
+        self.forward(input)
+    }
+
+    fn backward_pass(&mut self, d_output: &Tensor) -> Tensor {
+        let (_, _, d_input) = self.backward(d_output);
+        d_input
+    }
+
+    fn set_params(&mut self, params: Vec<Tensor>) {
+        self.weight = params[0].clone();
+        self.bias = params[1].clone();
+    }
+
+    fn get_params(&self) -> Vec<Tensor> {
+        vec![self.weight.clone(), self.bias.clone()]
+    }
+
+    fn get_grads(&self) -> Vec<Tensor> {
+        vec![
+            self.d_weight.clone().unwrap_or_else(|| {
+                Tensor::new(vec![
+                    self.out_channels,
+                    self.in_channels,
+                    self.kernel_size.0,
+                    self.kernel_size.1,
+                ])
+            }),
+            self.d_bias
+                .clone()
+                .unwrap_or_else(|| Tensor::new(vec![self.out_channels, 1])),
+        ]
+    }
+
+    fn save(&self, writer: &mut dyn std::io::prelude::Write) -> std::io::Result<()> {
+        write_u8(writer, TAG_CONV2D)?;
+        write_tensor(writer, &self.weight)?;
+        write_tensor(writer, &self.bias)?;
+        Ok(())
     }
 }
 
