@@ -17,6 +17,7 @@ use crate::tensor::Tensor;
 use std::io::{self, Write};
 
 pub mod activation;
+pub mod conv;
 pub mod flatten;
 pub mod init;
 pub mod linear;
