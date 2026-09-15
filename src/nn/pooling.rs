@@ -1,5 +1,5 @@
 //! 2D Max Pooling layer
-//! 
+//!
 //! Downsamples dimensions over unbatched 3D tensors
 //! `[channels, height, width] -> [channels, out_h, out_w]`.
 
@@ -12,7 +12,7 @@ use crate::{
 };
 
 /// A 2D max pooling layer that extracts the maximum value over sliding windows
-/// 
+///
 /// Works independently per channel
 #[derive(Clone)]
 pub struct MaxPool2DLayer {
@@ -29,9 +29,9 @@ pub struct MaxPool2DLayer {
 
 impl MaxPool2DLayer {
     /// Creates a new max pooling layer with the given kernelt dimensions and stide
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// Panics if `kernel_size.0 == 0`, `kernel_size.1 == 0` or `stride == 0`
     pub fn new(kernel_size: (usize, usize), stride: usize) -> MaxPool2DLayer {
         assert!(stride > 0, "stride must be > 0");
@@ -53,9 +53,9 @@ impl MaxPool2DLayer {
     }
 
     /// Computes 2D max pooling, caching `argmax` positions and `input_shape` for backward
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// Panics if `input` is not rank 3 or if input height/ width is smaller
     /// then the kernel size
     pub fn forward(&mut self, input: &Tensor) -> Tensor {
