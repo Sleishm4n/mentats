@@ -6,13 +6,15 @@ A neural network library built from scratch in Rust, designed to understand deep
 
 mentats is an educational framework implementing core neural network operations without external libraries. Every operation is implemented from first principles.
 
-**Current Milestone:** Conditional VAE (CVAE) on MNIST, generates digits of a chosen class from a random latent vector, using free-bits KL to avoid posterior collapse
+**Current Milestone:** Convolutional classification on MNIST at **97.69%** accuracy
+
+**Previous Milestone:** Conditional VAE (CVAE) on MNIST, generates digits of a chosen class from a random latent vector, using free-bits KL to avoid posterior collapse
 
 ![alt text](images/image-2.png)
 
 ---
 
-**Previous Milestone:** Unconditional MNIST VAE with 10 latent dimensions, free bits and per-batch annealing. Latent space shows per-digit structure without collapsed dimensions
+**Earlier Milestone:** Unconditional MNIST VAE with 10 latent dimensions, free bits and per-batch annealing. Latent space shows per-digit structure without collapsed dimensions
 
 t-SNE preserves the local neighbourhood structure and gives clearer visual on the cluster seperation than the PCA of the 10 dimension latent space
 
@@ -23,6 +25,22 @@ t-SNE preserves the local neighbourhood structure and gives clearer visual on th
 ---
 
 ## Results
+
+### Convolutional network
+
+**Initial loss: 1.7083912**
+
+| Epoch | Loss   | Train Accuracy | Elapsed Time (s) |
+| ----- | ------ | -------------- | ---------------- |
+| 0     | 0.1477 | 95.70%         | 116.1743845      |
+| 1     | 0.0758 | 97.79%         | 132.8015859      |
+| 2     | 0.0631 | 98.19%         | 135.2815806      |
+| 3     | 0.0564 | 98.40%         | 155.8238239      |
+| 4     | 0.0518 | 98.58%         | 125.2507541      |
+
+**Test accuracy: 97.69%**
+
+### Simple feed-forward network
 
 **Initial loss: 2.4407463**
 
@@ -39,6 +57,19 @@ t-SNE preserves the local neighbourhood structure and gives clearer visual on th
 ---
 
 ## Network Architecture
+
+**CNN Classifier**
+
+```
+Input (784) 
+  └─ ReshapeLayer ([1, 28, 28]) 
+  └─ Conv2DLayer (1 → 8 feature maps, 3×3 kernel, Kaiming normal) 
+  └─ ReLU 
+  └─ MaxPool2DLayer (2×2 pool, stride 2) 
+  └─ FlattenLayer (8 × 13 × 13 → 1352) 
+  └─ LinearLayer (1352 → 10) 
+  └─ Softmax (implicit via cross-entropy loss)
+```
 
 **Classifier**
 
@@ -83,6 +114,7 @@ data/
 │   ├── ...
 checkpoints/
 ├── mnist_classifier.rmlc
+├── cnn_mnist_classifier.rmlc
 ├── cvae_encoder.rmlc
 ├── cvae_decoder.rmlc
 src/
@@ -91,7 +123,7 @@ src/
 ├── data/
 │   ├── mnist.rs # Load images and labels
 │   ├── mod.rs
-├── loss /
+├── loss/
 │   ├── cross_entropy.rs
 │   ├── mse.rs # mean squared error
 |   ├── kl_divergence.rs # KL divergence + free-bits gradients
@@ -104,10 +136,12 @@ src/
 │   └── mod.rs
 ├── nn/
 │   ├── activation.rs  # ReLU, sigmoid, tanh (ActivationKind enum)
+|   ├── conv.rs
 |   ├── flatten.rs
 |   ├── init.rs # Xavier
 │   ├── linear.rs      # LinearLayer (forward pass, backward pass, sgd_update)
 │   ├── network.rs # Collection of network layers
+|   ├── pooling.rs
 |   ├── reshape.rs
 |   ├── sampling.rs # GaussianSampled (VAE reparameterisation)
 │   ├── softmax.rs # Softmax function
@@ -115,7 +149,7 @@ src/
 ├── optimiser/
 |   ├── adam.rs
 |   └── mod.rs
-├── utils /
+├── utils/
 |   ├── batch.rs
 |   ├── checkpoint.rs
 |   ├── grad_check.rs
@@ -126,6 +160,7 @@ src/
 ├── lib.rs
 examples/
 │   ├── xor.rs
+|   ├── cnn_mnist.rs
 │   ├── mnist.rs
 │   ├── basics.rs
 |   ├── cvae_mnist.rs
@@ -175,13 +210,23 @@ data/mnist/t10k-labels.idx1-ubyte
 
 **GaussianSampler (`src/nn/sampling.rs`)**
 
-- Reparameterization trick: `z = mu + sigma * eps`, `sigma = exp(0.5 * log_var)`
+- Reparameterisation trick: `z = mu + sigma * eps`, `sigma = exp(0.5 * log_var)`
 - Fresh `eps` sampled every forward pass (Box-Muller transform, no external RNG distribution needed)
 
 **KL Divergence (`src/loss/kl_divergence.rs`)**
 
 - Standard closed-form Gaussian KL to N(0, 1) prior, summed per dimension then meaned over batch
 - Free-bits clamping (`tau = 0.5` nats/dim), dimensions under threshold contribute zero loss and zero gradient, preventing posterior collapse
+
+**Conv2DLayer (`src/nn/conv.rs`)**
+
+- Valid 2D cross correlation over multi channel tensors
+- Kaiming normal initialisation
+
+**MaxPool2DLayer (`src/nn/pooling.rs`)**
+
+- 2D downsampling with sub window sliding
+- Cached `(row, col)` `argmax` tracking
 
 ## Dependencies
 
@@ -199,6 +244,7 @@ Everything else is standard library.
 cargo run --example basics
 cargo run --example xor
 cargo run --example mnist
+cargo run --example cnn_mnist --release
 cargo run --example vae_mnist --release
 cargo run --example cvae_mnist --release
 cargo run --example cvae_mnist -- generate <class 0-9> [count]
