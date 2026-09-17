@@ -22,6 +22,7 @@ pub mod flatten;
 pub mod init;
 pub mod linear;
 pub mod network;
+pub mod padding;
 pub mod pooling;
 pub mod reshape;
 pub mod sampling;
