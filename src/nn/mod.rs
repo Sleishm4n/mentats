@@ -26,6 +26,7 @@ pub mod pooling;
 pub mod reshape;
 pub mod sampling;
 pub mod softmax;
+pub mod upsample;
 
 /// The common interface every layer implements
 ///
