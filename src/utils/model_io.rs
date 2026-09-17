@@ -3,7 +3,7 @@ use std::io::{self, Read, Write};
 use crate::nn::{
     activation::ActivationLayer, conv::Conv2DLayer, flatten::FlattenLayer, linear::LinearLayer,
     pooling::MaxPool2DLayer, reshape::ReshapeLayer, sampling::GaussianSampler,
-    softmax::SoftmaxLayer, Layer,
+    softmax::SoftmaxLayer, upsample::Upsample2DLayer, Layer,
 };
 use crate::tensor::Tensor;
 
@@ -19,6 +19,7 @@ pub const TAG_RESHAPE: u8 = 4;
 pub const TAG_SAMPLER: u8 = 5;
 pub const TAG_CONV2D: u8 = 6;
 pub const TAG_MAXPOOL2D: u8 = 7;
+pub const TAG_UPSAMPLE2D: u8 = 8;
 
 // ---- primitive helpers -------------------------------------------------
 
@@ -114,6 +115,7 @@ pub fn load_layer(reader: &mut dyn Read) -> io::Result<Box<dyn Layer>> {
         TAG_SAMPLER => Ok(Box::new(GaussianSampler::load(reader)?)),
         TAG_CONV2D => Ok(Box::new(Conv2DLayer::load(reader)?)),
         TAG_MAXPOOL2D => Ok(Box::new(MaxPool2DLayer::load(reader)?)),
+        TAG_UPSAMPLE2D => Ok(Box::new(Upsample2DLayer::load(reader)?)),
         other => Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("unknown layer tag: {other}"),
