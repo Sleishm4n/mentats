@@ -45,3 +45,30 @@ pub fn save_mnist_tensor_pgm(
 
     Ok(())
 }
+
+pub fn save_pgm_grid_4x4(
+    samples: &[Tensor],
+    path: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    assert_eq!(samples.len(), 16);
+    let file = File::create(path)?;
+    let mut writer = BufWriter::new(file);
+    // 4 digits wide x 28 = 112, 4 digits high x 28 = 112
+    writeln!(writer, "P2")?;
+    writeln!(writer, "112 112")?;
+    writeln!(writer, "255")?;
+    for grid_row in 0..4 {
+        for pixel_row in 0..28 {
+            for grid_col in 0..4 {
+                let sample_idx = grid_row * 4 + grid_col;
+                for pixel_col in 0..28 {
+                    let val = samples[sample_idx].get(&[pixel_row * 28 + pixel_col, 0]);
+                    let px = to_u8_gray(val, true);
+                    write!(writer, "{} ", px)?;
+                }
+            }
+            writeln!(writer)?;
+        }
+    }
+    Ok(())
+}
