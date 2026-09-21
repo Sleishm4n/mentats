@@ -3,6 +3,7 @@
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter};
 
+use crate::nn::builder::NetworkBuilder;
 use crate::utils::model_io::{load_layer, read_u32, write_u32};
 use crate::{nn::Layer, optimiser::Optimiser, tensor::Tensor};
 
@@ -18,6 +19,11 @@ pub struct Network {
 }
 
 impl Network {
+    /// Creates a [`NetworkBuilder`] for chaining layers fluently
+    pub fn builder() -> NetworkBuilder {
+        NetworkBuilder::new()
+    }
+
     /// Creates a network from layers, applied in the order given
     pub fn new(layers: Vec<Box<dyn Layer>>) -> Network {
         Network { layers }

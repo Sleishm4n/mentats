@@ -1,16 +1,23 @@
 use mentats::loss::mse::{d_mse, mse};
-use mentats::nn::activation::{ActivationKind::Sigmoid, ActivationLayer};
-use mentats::nn::linear::LinearLayer;
 use mentats::nn::network::Network;
 use mentats::optimiser::adam::Adam;
 use mentats::tensor::Tensor;
 
 fn main() {
-    let mut network = Network::new(vec![
-        Box::new(LinearLayer::new_rand(2, 2)),
-        Box::new(ActivationLayer::new(Sigmoid)),
-        Box::new(LinearLayer::new_rand(2, 1)),
-    ]);
+    // let mut network = Network::new(vec![
+    //     Box::new(LinearLayer::new_rand(2, 2)),
+    //     Box::new(ActivationLayer::new(Sigmoid)),
+    //     Box::new(LinearLayer::new_rand(2, 1)),
+    // ]);
+
+    let mut network = Network::builder()
+        .input(2)
+        .linear(2)
+        .sigmoid()
+        .linear(1)
+        .sigmoid()
+        .build();
+
     let mut optimiser = Adam::new(0.001, 0.9, 0.999, 1e-8);
     let epochs = 10000;
 
@@ -23,7 +30,7 @@ fn main() {
 
         for (x, y) in inputs.iter().zip(targets.iter()) {
             let x_mat = Tensor::from_vec(vec![2, 1], x.to_vec());
-            let y_mat = Tensor::from_vec(vec![1], y.to_vec());
+            let y_mat = Tensor::from_vec(vec![1, 1], y.to_vec());
             let y_hat = network.forward(&x_mat);
             let loss = mse(&y_hat, &y_mat);
             let d_out = d_mse(&y_hat, &y_mat);

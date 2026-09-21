@@ -17,6 +17,7 @@ use crate::tensor::Tensor;
 use std::io::{self, Write};
 
 pub mod activation;
+pub mod builder;
 pub mod conv;
 pub mod flatten;
 pub mod init;
@@ -28,6 +29,12 @@ pub mod reshape;
 pub mod sampling;
 pub mod softmax;
 pub mod upsample;
+
+pub type Linear = linear::LinearLayer;
+pub type Conv2d = conv::Conv2DLayer;
+pub type Flatten = flatten::FlattenLayer;
+pub type Reshape = reshape::ReshapeLayer;
+pub type Softmax = softmax::SoftmaxLayer;
 
 /// The common interface every layer implements
 ///
