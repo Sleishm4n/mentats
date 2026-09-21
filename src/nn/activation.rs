@@ -149,6 +149,22 @@ impl ActivationLayer {
         ActivationLayer { kind, input: None }
     }
 
+    pub fn relu() -> Self {
+        Self::new(ActivationKind::Relu)
+    }
+
+    pub fn leaky_relu() -> Self {
+        Self::new(ActivationKind::LeakyRelu)
+    }
+
+    pub fn sigmoid() -> Self {
+        Self::new(ActivationKind::Sigmoid)
+    }
+
+    pub fn tanh() -> Self {
+        Self::new(ActivationKind::Tanh)
+    }
+
     /// Reads a layer back from `reader`, assuming the [`TAG_ACTIVATION`] byte
     /// has already been consumed
     ///

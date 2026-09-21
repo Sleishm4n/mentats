@@ -2,18 +2,7 @@ use mentats::data::mnist::{load_images, load_labels, one_hot};
 use mentats::loss::cross_entropy::binary_cross_entropy;
 use mentats::loss::kl_divergence::{d_kl_divergence_log_var, d_kl_divergence_mu, kl_divergence};
 use mentats::nn::Layer;
-use mentats::nn::{
-    activation::{ActivationKind::Relu, ActivationLayer},
-    conv::Conv2DLayer,
-    flatten::FlattenLayer,
-    linear::LinearLayer,
-    network::Network,
-    padding::Pad2DLayer,
-    pooling::MaxPool2DLayer,
-    reshape::ReshapeLayer,
-    sampling::GaussianSampler,
-    upsample::Upsample2DLayer,
-};
+use mentats::nn::{network::Network, sampling::GaussianSampler};
 use mentats::optimiser::adam::Adam;
 use mentats::utils::checkpoint::{load_network_or_panic, save_network};
 use mentats::utils::image::{save_mnist_tensor_pgm, save_pgm_grid_4x4};
@@ -103,37 +92,74 @@ fn main() {
     let output_dir = Path::new("outputs/cnn_cvae");
     create_dir_all(output_dir).expect("failed to create output directory");
 
-    let mut conv_encoder = Network::new(vec![
-        Box::new(ReshapeLayer::new(vec![1, 28, 28])),
-        Box::new(Conv2DLayer::new_kaiming(1, 16, (3, 3))),
-        Box::new(ActivationLayer::new(Relu)),
-        Box::new(MaxPool2DLayer::new_stand()),
-        Box::new(FlattenLayer::new()),
-    ]);
+    // Old version pre [`nn::NetworkBuilder`]
+    //
+    // let mut conv_encoder = Network::new(vec![
+    //     Box::new(ReshapeLayer::new(vec![1, 28, 28])),
+    //     Box::new(Conv2DLayer::new_kaiming(1, 16, (3, 3))),
+    //     Box::new(ActivationLayer::new(Relu)),
+    //     Box::new(MaxPool2DLayer::new_stand()),
+    //     Box::new(FlattenLayer::new()),
+    // ]);
 
-    let mut dense_encoder = Network::new(vec![Box::new(LinearLayer::new_rand(
-        16 * 13 * 13 + label_dim,
-        latent_dim * 2,
-    ))]);
+    let mut conv_encoder = Network::builder()
+        .reshape(vec![1, 28, 28])
+        .conv2d_kaiming(1, 16, (3, 3))
+        .relu()
+        .max_pool2d()
+        .flatten()
+        .build();
+
+    // Old version pre [`nn::NetworkBuilder`]
+    //
+    // let mut dense_encoder = Network::new(vec![Box::new(LinearLayer::new_rand(
+    //     16 * 13 * 13 + label_dim,
+    //     latent_dim * 2,
+    // ))]);
+
+    let mut dense_encoder = Network::builder()
+        .input(16 * 13 * 13 + label_dim)
+        .linear(latent_dim * 2)
+        .build();
 
     let mut sampler = GaussianSampler::new(latent_dim);
 
-    let mut decoder = Network::new(vec![
-        Box::new(LinearLayer::new_rand(latent_dim + label_dim, 16 * 7 * 7)),
-        Box::new(ReshapeLayer::new(vec![16, 7, 7])),
-        Box::new(ActivationLayer::new(Relu)),
-        Box::new(Upsample2DLayer::new_2x()),
-        Box::new(Pad2DLayer::new_1()),
-        Box::new(Conv2DLayer::new_kaiming(16, 16, (3, 3))),
-        Box::new(ActivationLayer::new(Relu)),
-        Box::new(Upsample2DLayer::new_2x()),
-        Box::new(Pad2DLayer::new_1()),
-        Box::new(Conv2DLayer::new_kaiming(16, 8, (3, 3))),
-        Box::new(ActivationLayer::new(Relu)),
-        Box::new(Pad2DLayer::new_1()),
-        Box::new(Conv2DLayer::new_kaiming(8, 1, (3, 3))),
-        Box::new(FlattenLayer::new()),
-    ]);
+    // Old version pre [`nn::NetworkBuilder`]
+    //
+    // let mut decoder = Network::new(vec![
+    //     Box::new(LinearLayer::new_rand(latent_dim + label_dim, 16 * 7 * 7)),
+    //     Box::new(ReshapeLayer::new(vec![16, 7, 7])),
+    //     Box::new(ActivationLayer::new(Relu)),
+    //     Box::new(Upsample2DLayer::new_2x()),
+    //     Box::new(Pad2DLayer::new_1()),
+    //     Box::new(Conv2DLayer::new_kaiming(16, 16, (3, 3))),
+    //     Box::new(ActivationLayer::new(Relu)),
+    //     Box::new(Upsample2DLayer::new_2x()),
+    //     Box::new(Pad2DLayer::new_1()),
+    //     Box::new(Conv2DLayer::new_kaiming(16, 8, (3, 3))),
+    //     Box::new(ActivationLayer::new(Relu)),
+    //     Box::new(Pad2DLayer::new_1()),
+    //     Box::new(Conv2DLayer::new_kaiming(8, 1, (3, 3))),
+    //     Box::new(FlattenLayer::new()),
+    // ]);
+
+    let mut decoder = Network::builder()
+        .input(latent_dim + label_dim)
+        .linear(16 * 7 * 7)
+        .reshape(vec![16, 7, 7])
+        .relu()
+        .upsample2d_2x()
+        .pad2d_1()
+        .conv2d_kaiming(16, 16, (3, 3))
+        .relu()
+        .upsample2d_2x()
+        .pad2d_1()
+        .conv2d_kaiming(16, 8, (3, 3))
+        .relu()
+        .pad2d_1()
+        .conv2d_kaiming(8, 1, (3, 3))
+        .flatten()
+        .build();
 
     let mut conv_opt = Adam::new(lr, 0.9, 0.999, 1e-8);
     let mut dense_opt = Adam::new(lr, 0.9, 0.999, 1e-8);
