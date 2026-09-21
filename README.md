@@ -6,9 +6,18 @@ A neural network library built from scratch in Rust, designed to understand deep
 
 mentats is an educational framework implementing core neural network operations without external libraries. Every operation is implemented from first principles.
 
-**Current Milestone:** Convolutional classification on MNIST at **97.69%** accuracy
+**Current Milestone:** Convolutional Conditional VAE (CNN VAE) on MNIST. Combines the convolutional feature extraction with nearest neighbour upsampling and convolutional decoding to generate class defined digits ($0\rightarrow 9$) from random latent vectors $z \sim \mathcal{N}(0, I)$
 
-**Previous Milestone:** Conditional VAE (CVAE) on MNIST, generates digits of a chosen class from a random latent vector, using free-bits KL to avoid posterior collapse
+<p align="center">
+<img src="images/final_showcase_grid_4x4.png" alt="Generated 8s" width="300">
+<img src="images/grid_digit_8.png" alt="Generated 8s" width="300">
+</p>
+
+_(Left: 4x4 class-conditioned generation showcase covering classes 0–9; Right: 16 distinct styles of digit 8 sampled across the latent space showing stroke variations)_
+
+**Previous Milestone:** Convolutional classification on MNIST at **97.69%** accuracy
+
+**Earlier Milestone:** Conditional VAE (CVAE) on MNIST, generates digits of a chosen class from a random latent vector, using free-bits KL to avoid posterior collapse
 
 ![alt text](images/image-2.png)
 
@@ -58,16 +67,49 @@ t-SNE preserves the local neighbourhood structure and gives clearer visual on th
 
 ## Network Architecture
 
+**CNN CVAE (Convolutional Conditional VAE)**
+
+- **Convolutional Encoder**:
+
+```
+Input (784)
+  └─ ReshapeLayer ([1, 28, 28])
+  └─ Conv2DLayer (1 → 16 channels, 3x3 kernel, Kaiming normal)
+  └─ ReLU
+  └─ MaxPool2DLayer (2x2 pool, stride 2)
+  └─ FlattenLayer (16 x 13 x 13 → 2704)
+```
+
+- **Convolutional Decoder**:
+
+```
+Concat [Latent z (10), One-Hot Label (10)]
+  └─ LinearLayer (20 → 16 x 7 x 7 = 784)
+  └─ ReshapeLayer ([16, 7, 7])
+  └─ ReLU
+  └─ Upsample2DLayer (2x nearest-neighbor → [16, 14, 14])
+  └─ Pad2DLayer (pad 1 → [16, 16, 16])
+  └─ Conv2DLayer (16 → 16 channels, 3x3)
+  └─ ReLU
+  └─ Upsample2DLayer (2x nearest-neighbor → [16, 32, 32])
+  └─ Pad2DLayer (pad 1 → [16, 34, 34] → cropped/convolved to [16, 28, 28])
+  └─ Conv2DLayer (16 → 8 channels, 3x3)
+  └─ ReLU
+  └─ Pad2DLayer (pad 1)
+  └─ Conv2DLayer (8 → 1 channel, 3x3)
+  └─ FlattenLayer (784)
+```
+
 **CNN Classifier**
 
 ```
-Input (784) 
-  └─ ReshapeLayer ([1, 28, 28]) 
-  └─ Conv2DLayer (1 → 8 feature maps, 3×3 kernel, Kaiming normal) 
-  └─ ReLU 
-  └─ MaxPool2DLayer (2×2 pool, stride 2) 
-  └─ FlattenLayer (8 × 13 × 13 → 1352) 
-  └─ LinearLayer (1352 → 10) 
+Input (784)
+  └─ ReshapeLayer ([1, 28, 28])
+  └─ Conv2DLayer (1 → 8 feature maps, 3x3 kernel, Kaiming normal)
+  └─ ReLU
+  └─ MaxPool2DLayer (2x2 pool, stride 2)
+  └─ FlattenLayer (8 x 13 x 13 → 1352)
+  └─ LinearLayer (1352 → 10)
   └─ Softmax (implicit via cross-entropy loss)
 ```
 
@@ -105,68 +147,15 @@ Same loss setup as the unconditional VAE; label is concatenated onto both encode
 
 ---
 
-## Project Structure
+## Project Layout
 
-```
-data/
-├── mnist/
-│   ├── train-images.idx3-ubyte
-│   ├── ...
-checkpoints/
-├── mnist_classifier.rmlc
-├── cnn_mnist_classifier.rmlc
-├── cvae_encoder.rmlc
-├── cvae_decoder.rmlc
-src/
-├── bin/
-|   └── pgm2png.rs # pgm converter (VAE output)
-├── data/
-│   ├── mnist.rs # Load images and labels
-│   ├── mod.rs
-├── loss/
-│   ├── cross_entropy.rs
-│   ├── mse.rs # mean squared error
-|   ├── kl_divergence.rs # KL divergence + free-bits gradients
-│   ├── mod.rs
-├── tensor/
-│   ├── core.rs   # Tensor struct and core operations
-│   ├── ops.rs
-│   ├── init.rs     # Weight initialisation
-|   ├── batch_ops.rs # Batched matmul
-│   └── mod.rs
-├── nn/
-│   ├── activation.rs  # ReLU, sigmoid, tanh (ActivationKind enum)
-|   ├── conv.rs
-|   ├── flatten.rs
-|   ├── init.rs # Xavier
-│   ├── linear.rs      # LinearLayer (forward pass, backward pass, sgd_update)
-│   ├── network.rs # Collection of network layers
-|   ├── pooling.rs
-|   ├── reshape.rs
-|   ├── sampling.rs # GaussianSampled (VAE reparameterisation)
-│   ├── softmax.rs # Softmax function
-│   └── mod.rs
-├── optimiser/
-|   ├── adam.rs
-|   └── mod.rs
-├── utils/
-|   ├── batch.rs
-|   ├── checkpoint.rs
-|   ├── grad_check.rs
-|   ├── image.rs # u8 to grayscale
-|   ├── mod.rs 
-|   ├── model_io.rs # model saving and loading
-|   ├── vae.rs # vae functions
-├── lib.rs
-examples/
-│   ├── xor.rs
-|   ├── cnn_mnist.rs
-│   ├── mnist.rs
-│   ├── basics.rs
-|   ├── cvae_mnist.rs
-|   ├── vae_mnist.rs
-└──────
-```
+- `src/tensor/` - N-dimensional tensor implementation, strides, and memory layouts.
+- `src/matrix/` - 2D matrix primitives and BLAS-like operations.
+- `src/nn/` - Layers (Linear, Conv2D, MaxPool2D, Upsample2D, Pad2D, Activations, Sampler).
+- `src/loss/` - Loss functions (Cross-Entropy, BCE, MSE, Free-bits KL divergence).
+- `src/optimiser/` - Optimisers (Adam, SGD).
+- `examples/` - End-to-end runnable models (CNN classifier, VAE, CVAE).
+- `tests/` - Numerical and gradient integration tests.
 
 ---
 
@@ -195,11 +184,11 @@ data/mnist/t10k-labels.idx1-ubyte
 
 **Activation functions (`src/nn/activation.rs`)**
 
-- ReLU, sigmoid, tanh, identified by an `ActivationKind` enum (not function-pointer comparison — unreliable under release-build identical code folding)
+- ReLU, sigmoid, tanh, identified by an `ActivationKind` enum (not function-pointer comparison - unreliable under release-build identical code folding)
 
 **LinearLayer (`src/nn/linear.rs`)**
 
-- Weight shape: `(out_features × in_features)`
+- Weight shape: `(out_features x in_features)`
 - Xavier-uniform initialisation
 - `forward(&input)` computes `W·x + b`, supports batched 3D input
 
@@ -228,6 +217,14 @@ data/mnist/t10k-labels.idx1-ubyte
 - 2D downsampling with sub window sliding
 - Cached `(row, col)` `argmax` tracking
 
+**Upsample2DLayer (`src/nn/upsample.rs`)**
+
+- 2D nearest-neighbour spatial upsampling
+
+**Pad2DLayer (`src/nn/padding.rs`)**
+
+- 2D zero-padding for convolutional spatial preservation
+
 ## Dependencies
 
 ```toml
@@ -248,11 +245,14 @@ cargo run --example cnn_mnist --release
 cargo run --example vae_mnist --release
 cargo run --example cvae_mnist --release
 cargo run --example cvae_mnist -- generate <class 0-9> [count]
+cargo run --example cnn_vae --release
+cargo run --example cnn_cvae --release
+cargo run --example cnn_cvae --release -- generate <digit 0-9> [count]
 cargo test
 ```
 
 ## Design Notes
 
-- Weights are `(out × in)` — consistent with the convention that `forward` computes `W·x`, where `x` is a column vector.
+- Weights are `(out x in)` - consistent with the convention that `forward` computes `W·x`, where `x` is a column vector.
 - `matmul` uses i-k-j loop order intentionally for cache performance; don't reorder.
-- Tests use `Matrix::from_vec` with known values and epsilon comparison — no random inputs in correctness tests.
+- Tests use `Matrix::from_vec` with known values and epsilon comparison - no random inputs in correctness tests.
