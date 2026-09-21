@@ -8,7 +8,7 @@
 //! A tiny feed-forward network, built and run one forward pass:
 //!
 //! ```
-//! use mentats::{Network, Tensor};
+//! use mentats::{nn::network::Network, tensor::Tensor};
 //!
 //! let mut network = Network::builder()
 //!     .input(2)
