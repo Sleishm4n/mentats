@@ -51,15 +51,25 @@ impl ReshapeLayer {
 
 impl Layer for ReshapeLayer {
     fn forward_pass(&mut self, input: &Tensor) -> Tensor {
-        let input_elements: usize = input.shape.iter().product();
-        let output_elements: usize = self.output_shape.iter().product();
-        assert_eq!(
-            input_elements, output_elements,
-            "reshape size mismatch between input and output"
-        );
+        let sample_elements: usize = self.output_shape.iter().product();
+
+        let target_shape =
+            if input.shape.len() == 3 && input.shape[2] == 1 && input.shape[1] == sample_elements {
+                let batch_size = input.shape[0];
+                let mut shape = vec![batch_size];
+                shape.extend(&self.output_shape);
+                shape
+            } else {
+                assert_eq!(
+                    input.shape.iter().product::<usize>(),
+                    sample_elements,
+                    "reshape size mismatch between input and output"
+                );
+                self.output_shape.clone()
+            };
 
         self.input_shape = Some(input.shape.clone());
-        Tensor::from_vec(self.output_shape.clone(), input.data.clone())
+        Tensor::from_vec(target_shape, input.data.clone())
     }
 
     fn backward_pass(&mut self, d_output: &Tensor) -> Tensor {
@@ -130,5 +140,20 @@ mod tests {
         let mut layer = ReshapeLayer::new(vec![4, 2]);
         let input = Tensor::from_vec(vec![2, 3], vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
         let _ = layer.forward_pass(&input);
+    }
+
+    #[test]
+    fn test_reshape_forward_batched() {
+        let mut layer = ReshapeLayer::new(vec![1, 2, 2]);
+
+        let input = Tensor::from_vec(vec![2, 4, 1], (1..=8).map(|x| x as f32).collect());
+
+        let output = layer.forward_pass(&input);
+        assert_eq!(output.shape, vec![2, 1, 2, 2]);
+        assert_eq!(output.data, input.data);
+
+        let d_in = layer.backward_pass(&output);
+        assert_eq!(d_in.shape, vec![2, 4, 1]);
+        assert_eq!(d_in.data, input.data);
     }
 }
