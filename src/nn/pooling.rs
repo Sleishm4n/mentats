@@ -237,7 +237,7 @@ impl MaxPool2DLayer {
                 }
                 d_input
             }
-            _ => panic!("MaxPool2DLayer::forward requires a rank 3 or 4 tensor"),
+            _ => panic!("MaxPool2DLayer::backward requires a rank 3 or 4 tensor"),
         }
     }
 
