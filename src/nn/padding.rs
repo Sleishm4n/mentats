@@ -223,7 +223,7 @@ mod tests {
         let mut batch_in_data = sample0.data.clone();
         batch_in_data.extend(&sample1.data);
         let batched_in = Tensor::from_vec(vec![2, 1, 2, 2], batch_in_data);
-        
+
         let batched_out = pad_batched.forward(&batched_in);
         assert_eq!(batched_out.shape, vec![2, 1, 4, 4]);
         assert_eq!(&batched_out.data[0..16], &out0.data[..]);
@@ -232,7 +232,7 @@ mod tests {
         let mut batch_dout_data = dout0.data.clone();
         batch_dout_data.extend(&dout1.data);
         let batched_dout = Tensor::from_vec(vec![2, 1, 4, 4], batch_dout_data);
-        
+
         let batched_din = pad_batched.backward(&batched_dout);
         assert_eq!(batched_din.shape, vec![2, 1, 2, 2]);
         assert_eq!(&batched_din.data[0..4], &din0.data[..]);
