@@ -46,7 +46,14 @@ impl FlattenLayer {
 impl Layer for FlattenLayer {
     fn forward_pass(&mut self, input: &Tensor) -> Tensor {
         self.input_shape = Some(input.shape.clone());
-        Tensor::from_vec(vec![input.data.len(), 1], input.data.clone())
+        match input.shape.len() {
+            4 => {
+                let batch_size = input.shape[0];
+                let features = input.data.len() / batch_size;
+                Tensor::from_vec(vec![batch_size, features, 1], input.data.clone())
+            }
+            _ => Tensor::from_vec(vec![input.data.len(), 1], input.data.clone()),
+        }
     }
 
     fn backward_pass(&mut self, d_output: &Tensor) -> Tensor {
@@ -107,5 +114,20 @@ mod tests {
 
         assert_eq!(back.shape, vec![2, 2, 3]);
         assert_eq!(back.data, grad.data);
+    }
+
+    #[test]
+    fn test_flatten_forward_batched() {
+        let mut layer: FlattenLayer = FlattenLayer::new();
+        let input = Tensor::from_vec(vec![2, 3, 2, 2], (0..24).map(|x| x as f32).collect());
+
+        let output = layer.forward_pass(&input);
+        assert_eq!(output.shape, vec![2, 12, 1]);
+        assert_eq!(output.data, input.data);
+
+        let d_out = output.clone();
+        let d_in = layer.backward_pass(&d_out);
+        assert_eq!(d_in.shape, vec![2, 3, 2, 2]);
+        assert_eq!(d_in.data, input.data);
     }
 }
