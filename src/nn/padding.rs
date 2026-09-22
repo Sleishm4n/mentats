@@ -2,7 +2,10 @@
 //!
 //! Adds padding border of zeros around an unbatched 3D tensor
 //! `[channels, height, width] -> [channels, height + 2*ph, width + 2*pw]`
-use std::io::{self, Read, Write};
+use std::{
+    io::{self, Read, Write},
+    panic,
+};
 
 use crate::{
     nn::Layer,
@@ -52,33 +55,59 @@ impl Pad2DLayer {
     ///
     /// Panics if `input` is not rank 3
     pub fn forward(&mut self, input: &Tensor) -> Tensor {
-        assert_eq!(
-            input.shape.len(),
-            3,
-            "Input must be 3D [channels, height, width]"
-        );
-
-        let h_in = input.shape[1];
-        let w_in = input.shape[2];
-        let channels = input.shape[0];
-        let (ph, pw) = self.padding;
-
-        let out_h = h_in + (2 * ph);
-        let out_w = w_in + (2 * pw);
-
-        let mut output = Tensor::new(vec![channels, out_h, out_w]);
-
-        for c in 0..channels {
-            for ih in 0..h_in {
-                for iw in 0..w_in {
-                    let val = input.get(&[c, ih, iw]);
-                    output.set(&[c, ih + ph, iw + pw], val);
-                }
-            }
-        }
-
         self.input_shape = Some(input.shape.clone());
-        output
+
+        match input.shape.len() {
+            3 => {
+                let h_in = input.shape[1];
+                let w_in = input.shape[2];
+                let channels = input.shape[0];
+                let (ph, pw) = self.padding;
+
+                let out_h = h_in + (2 * ph);
+                let out_w = w_in + (2 * pw);
+
+                let mut output = Tensor::new(vec![channels, out_h, out_w]);
+
+                for c in 0..channels {
+                    for ih in 0..h_in {
+                        for iw in 0..w_in {
+                            let val = input.get(&[c, ih, iw]);
+                            output.set(&[c, ih + ph, iw + pw], val);
+                        }
+                    }
+                }
+
+                output
+            }
+            4 => {
+                let batch_size = input.shape[0];
+
+                let channels = input.shape[1];
+                let h_in = input.shape[2];
+                let w_in = input.shape[3];
+                let (ph, pw) = self.padding;
+
+                let out_h = h_in + (2 * ph);
+                let out_w = w_in + (2 * pw);
+
+                let mut output = Tensor::new(vec![batch_size, channels, out_h, out_w]);
+
+                for b in 0..batch_size {
+                    for c in 0..channels {
+                        for ih in 0..h_in {
+                            for iw in 0..w_in {
+                                let val = input.get(&[b, c, ih, iw]);
+                                output.set(&[b, c, ih + ph, iw + pw], val);
+                            }
+                        }
+                    }
+                }
+
+                output
+            }
+            _ => panic!("Pad2DLayer::forward requires a rank 3 or 4 tensor"),
+        }
     }
 
     /// Slices the unpadded centre region out of `d_output`
@@ -94,21 +123,47 @@ impl Pad2DLayer {
 
         let mut d_input = Tensor::new(input_shape.clone());
 
-        let h_in = input_shape[1];
-        let w_in = input_shape[2];
-        let channels = input_shape[0];
-        let (ph, pw) = self.padding;
+        match d_output.shape.len() {
+            3 => {
+                let h_in = input_shape[1];
+                let w_in = input_shape[2];
+                let channels = input_shape[0];
+                let (ph, pw) = self.padding;
 
-        for c in 0..channels {
-            for ih in 0..h_in {
-                for iw in 0..w_in {
-                    let val = d_output.get(&[c, ih + ph, iw + pw]);
-                    d_input.set(&[c, ih, iw], val);
+                for c in 0..channels {
+                    for ih in 0..h_in {
+                        for iw in 0..w_in {
+                            let val = d_output.get(&[c, ih + ph, iw + pw]);
+                            d_input.set(&[c, ih, iw], val);
+                        }
+                    }
                 }
-            }
-        }
 
-        d_input
+                d_input
+            }
+            4 => {
+                let batch_size = input_shape[0];
+
+                let h_in = input_shape[2];
+                let w_in = input_shape[3];
+                let channels = input_shape[1];
+                let (ph, pw) = self.padding;
+
+                for b in 0..batch_size {
+                    for c in 0..channels {
+                        for ih in 0..h_in {
+                            for iw in 0..w_in {
+                                let val = d_output.get(&[b, c, ih + ph, iw + pw]);
+                                d_input.set(&[b, c, ih, iw], val);
+                            }
+                        }
+                    }
+                }
+
+                d_input
+            }
+            _ => panic!("Pad2DLayer::backward requires a rank 3 or 4 tensor"),
+        }
     }
 
     pub fn load(reader: &mut dyn Read) -> io::Result<Pad2DLayer> {
