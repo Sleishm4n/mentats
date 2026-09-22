@@ -59,61 +59,115 @@ impl MaxPool2DLayer {
     /// Panics if `input` is not rank 3 or if input height/ width is smaller
     /// then the kernel size
     pub fn forward(&mut self, input: &Tensor) -> Tensor {
-        assert_eq!(
-            input.shape.len(),
-            3,
-            "Input must be 3D [channels, height, width]"
-        );
+        match input.shape.len() {
+            3 => {
+                let h_in = input.shape[1];
+                let w_in = input.shape[2];
+                let (kh, kw) = self.kernel_size;
 
-        let h_in = input.shape[1];
-        let w_in = input.shape[2];
-        let (kh, kw) = self.kernel_size;
+                assert!(
+                    h_in >= kh,
+                    "Input height ({h_in}) must be >= kernel height ({kh})"
+                );
+                assert!(
+                    w_in >= kw,
+                    "Input width ({w_in}) must be >= kernel width ({kw})"
+                );
 
-        assert!(
-            h_in >= kh,
-            "Input height ({h_in}) must be >= kernel height ({kh})"
-        );
-        assert!(
-            w_in >= kw,
-            "Input width ({w_in}) must be >= kernel width ({kw})"
-        );
+                let out_h = (h_in - kh) / self.stride + 1;
+                let out_w = (w_in - kw) / self.stride + 1;
 
-        let out_h = (h_in - kh) / self.stride + 1;
-        let out_w = (w_in - kw) / self.stride + 1;
+                let channels = input.shape[0];
+                let mut output = Tensor::new(vec![channels, out_h, out_w]);
+                let mut argmax = Vec::with_capacity(channels * out_h * out_w);
 
-        let channels = input.shape[0];
-        let mut output = Tensor::new(vec![channels, out_h, out_w]);
-        let mut argmax = Vec::with_capacity(channels * out_h * out_w);
+                for c in 0..channels {
+                    for oh in 0..out_h {
+                        for ow in 0..out_w {
+                            let h_start = oh * self.stride;
+                            let h_end = h_start + kh;
+                            let w_start = ow * self.stride;
+                            let w_end = w_start + kw;
 
-        for c in 0..channels {
-            for oh in 0..out_h {
-                for ow in 0..out_w {
-                    let h_start = oh * self.stride;
-                    let h_end = h_start + kh;
-                    let w_start = ow * self.stride;
-                    let w_end = w_start + kw;
+                            let mut max_val = input.get(&[c, h_start, w_start]);
+                            let mut max_pos = (h_start, w_start);
+                            for i in h_start..h_end {
+                                for j in w_start..w_end {
+                                    let val = input.get(&[c, i, j]);
+                                    if val > max_val {
+                                        max_val = val;
+                                        max_pos = (i, j);
+                                    }
+                                }
+                            }
 
-                    let mut max_val = input.get(&[c, h_start, w_start]);
-                    let mut max_pos = (h_start, w_start);
-                    for i in h_start..h_end {
-                        for j in w_start..w_end {
-                            let val = input.get(&[c, i, j]);
-                            if val > max_val {
-                                max_val = val;
-                                max_pos = (i, j);
+                            output.set(&[c, oh, ow], max_val);
+                            argmax.push(max_pos);
+                        }
+                    }
+                }
+                self.argmax = Some(argmax);
+                self.input_shape = Some(input.shape.clone());
+
+                output
+            }
+            4 => {
+                let batch_size = input.shape[0];
+
+                let h_in = input.shape[2];
+                let w_in = input.shape[3];
+                let (kh, kw) = self.kernel_size;
+
+                assert!(
+                    h_in >= kh,
+                    "Input height ({h_in}) must be >= kernel height ({kh})"
+                );
+                assert!(
+                    w_in >= kw,
+                    "Input width ({w_in}) must be >= kernel width ({kw})"
+                );
+
+                let out_h = (h_in - kh) / self.stride + 1;
+                let out_w = (w_in - kw) / self.stride + 1;
+
+                let channels = input.shape[1];
+                let mut output = Tensor::new(vec![batch_size, channels, out_h, out_w]);
+                let mut argmax = Vec::with_capacity(batch_size * channels * out_h * out_w);
+
+                for b in 0..batch_size {
+                    for c in 0..channels {
+                        for oh in 0..out_h {
+                            for ow in 0..out_w {
+                                let h_start = oh * self.stride;
+                                let h_end = h_start + kh;
+                                let w_start = ow * self.stride;
+                                let w_end = w_start + kw;
+
+                                let mut max_val = input.get(&[b, c, h_start, w_start]);
+                                let mut max_pos = (h_start, w_start);
+                                for i in h_start..h_end {
+                                    for j in w_start..w_end {
+                                        let val = input.get(&[b, c, i, j]);
+                                        if val > max_val {
+                                            max_val = val;
+                                            max_pos = (i, j);
+                                        }
+                                    }
+                                }
+
+                                output.set(&[b, c, oh, ow], max_val);
+                                argmax.push(max_pos);
                             }
                         }
                     }
-
-                    output.set(&[c, oh, ow], max_val);
-                    argmax.push(max_pos);
                 }
-            }
-        }
-        self.argmax = Some(argmax);
-        self.input_shape = Some(input.shape.clone());
+                self.argmax = Some(argmax);
+                self.input_shape = Some(input.shape.clone());
 
-        output
+                output
+            }
+            _ => panic!("MaxPool2DLayer::forward requires a rank 3 or 4 tensor"),
+        }
     }
 
     /// Routes upstream gradients back to the locations of the maximum activations.
@@ -136,25 +190,55 @@ impl MaxPool2DLayer {
 
         let mut d_input = Tensor::new(input_shape.clone());
 
-        let out_h = d_output.shape[1];
-        let out_w = d_output.shape[2];
-        let channels = input_shape[0];
+        match d_output.shape.len() {
+            3 => {
+                let out_h = d_output.shape[1];
+                let out_w = d_output.shape[2];
+                let channels = input_shape[0];
 
-        let mut idx = 0;
-        for c in 0..channels {
-            for oh in 0..out_h {
-                for ow in 0..out_w {
-                    let (max_h, max_w) = argmax[idx];
-                    idx += 1;
+                let mut idx = 0;
+                for c in 0..channels {
+                    for oh in 0..out_h {
+                        for ow in 0..out_w {
+                            let (max_h, max_w) = argmax[idx];
+                            idx += 1;
 
-                    let dout = d_output.get(&[c, oh, ow]);
+                            let dout = d_output.get(&[c, oh, ow]);
 
-                    let prev = d_input.get(&[c, max_h, max_w]);
-                    d_input.set(&[c, max_h, max_w], prev + dout);
+                            let prev = d_input.get(&[c, max_h, max_w]);
+                            d_input.set(&[c, max_h, max_w], prev + dout);
+                        }
+                    }
                 }
+                d_input
             }
+            4 => {
+                let batch_size = d_output.shape[0];
+
+                let out_h = d_output.shape[2];
+                let out_w = d_output.shape[3];
+                let channels = input_shape[1];
+
+                let mut idx = 0;
+                for b in 0..batch_size {
+                    for c in 0..channels {
+                        for oh in 0..out_h {
+                            for ow in 0..out_w {
+                                let (max_h, max_w) = argmax[idx];
+                                idx += 1;
+
+                                let dout = d_output.get(&[b, c, oh, ow]);
+
+                                let prev = d_input.get(&[b, c, max_h, max_w]);
+                                d_input.set(&[b, c, max_h, max_w], prev + dout);
+                            }
+                        }
+                    }
+                }
+                d_input
+            }
+            _ => panic!("MaxPool2DLayer::forward requires a rank 3 or 4 tensor"),
         }
-        d_input
     }
 
     pub fn load(reader: &mut dyn Read) -> io::Result<MaxPool2DLayer> {
@@ -222,5 +306,54 @@ mod tests {
         assert_eq!(d_in.get(&[0, 1, 3]), 2.0);
         assert_eq!(d_in.get(&[0, 3, 1]), 3.0);
         assert_eq!(d_in.get(&[0, 3, 2]), 4.0);
+    }
+
+    #[test]
+    fn test_maxpool_batched_forward_and_backward() {
+        let mut pool_single = MaxPool2DLayer::new_stand();
+        let mut pool_batched = MaxPool2DLayer::new_stand();
+
+        let sample0 = Tensor::from_vec(
+            vec![1, 4, 4],
+            vec![
+                1.0, 3.0, 2.0, 4.0, 5.0, 6.0, 7.0, 8.0, 3.0, 2.0, 1.0, 0.0, -1.0, 4.0, 9.0, 2.0,
+            ],
+        );
+
+        let dout0 = Tensor::from_vec(vec![1, 2, 2], vec![1.0, 2.0, 3.0, 4.0]);
+
+        let sample1 = Tensor::from_vec(
+            vec![1, 4, 4],
+            vec![
+                9.0, 1.0, 8.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 0.0, 1.0, 3.0, 2.0, 5.0, 4.0, 8.0,
+            ],
+        );
+
+        let dout1 = Tensor::from_vec(vec![1, 2, 2], vec![5.0, 6.0, 7.0, 8.0]);
+
+        let out0 = pool_single.forward(&sample0);
+        let din0 = pool_single.backward(&dout0);
+        let out1 = pool_single.forward(&sample1);
+        let din1 = pool_single.backward(&dout1);
+
+        let mut batch_in_data = sample0.data.clone();
+        batch_in_data.extend(&sample1.data);
+        let batched_in = Tensor::from_vec(vec![2, 1, 4, 4], batch_in_data);
+
+        let batched_out = pool_batched.forward(&batched_in);
+        assert_eq!(batched_out.shape, vec![2, 1, 2, 2]);
+
+        assert_eq!(&batched_out.data[0..4], &out0.data[..]);
+        assert_eq!(&batched_out.data[4..8], &out1.data[..]);
+
+        let mut batch_dout_data = dout0.data.clone();
+        batch_dout_data.extend(&dout1.data);
+        let batched_dout = Tensor::from_vec(vec![2, 1, 2, 2], batch_dout_data);
+
+        let batched_din = pool_batched.backward(&batched_dout);
+        assert_eq!(batched_din.shape, vec![2, 1, 4, 4]);
+
+        assert_eq!(&batched_din.data[0..16], &din0.data[..]);
+        assert_eq!(&batched_din.data[16..32], &din1.data[..]);
     }
 }
