@@ -123,21 +123,48 @@ impl Conv2DLayer {
 
                 let mut output = Tensor::new(vec![self.out_channels, out_h, out_w]);
 
-                for oc in 0..self.out_channels {
-                    let b = self.bias.get(&[oc, 0]);
+                let in_stride_c = h_in * w_in;
+                let in_stride_h = w_in;
+
+                let out_stride_c = out_h * out_w;
+                let out_stride_h = out_w;
+
+                let w_stride_oc = self.in_channels * kh * kw;
+                let w_stride_ic = kh * kw;
+                let w_stride_ki = kw;
+
+                let input_data = &input.data;
+                let weight_data = &self.weight.data;
+                let bias_data = &self.bias.data;
+                let output_data = &mut output.data;
+
+                for (oc, _) in bias_data.iter().enumerate().take(self.out_channels) {
+                    let bias_val = bias_data[oc];
+                    let oc_out_offset = oc * out_stride_c;
+                    let oc_w_offset = oc * w_stride_oc;
+
                     for i in 0..out_h {
+                        let out_row_offset = oc_out_offset + i * out_stride_h;
+                        let in_row_base = i * in_stride_h;
+
                         for j in 0..out_w {
-                            let mut sum = b;
+                            let mut sum = bias_val;
                             for ic in 0..self.in_channels {
+                                let ic_in_offset = in_row_base + ic * in_stride_c + j;
+                                let ic_w_offset = oc_w_offset + ic * w_stride_ic;
+
                                 for ki in 0..kh {
+                                    let ki_in_offset = ic_in_offset + ki * in_stride_h;
+                                    let ki_w_offset = ic_w_offset + ki * w_stride_ki;
+
                                     for kj in 0..kw {
-                                        let x = input.get(&[ic, i + ki, j + kj]);
-                                        let w = self.weight.get(&[oc, ic, ki, kj]);
+                                        let x = input_data[ki_in_offset + kj];
+                                        let w = weight_data[ki_w_offset + kj];
                                         sum += x * w;
                                     }
                                 }
                             }
-                            output.set(&[oc, i, j], sum);
+                            output_data[out_row_offset + j] = sum;
                         }
                     }
                 }
@@ -168,25 +195,57 @@ impl Conv2DLayer {
 
                 let mut output = Tensor::new(vec![batch_size, self.out_channels, out_h, out_w]);
 
+                let in_stride_b = self.in_channels * h_in * w_in;
+                let in_stride_c = h_in * w_in;
+                let in_stride_h = w_in;
+
+                let out_stride_b = self.out_channels * out_h * out_w;
+                let out_stride_c = out_h * out_w;
+                let out_stride_h = out_w;
+
+                let w_stride_oc = self.in_channels * kh * kw;
+                let w_stride_ic = kh * kw;
+                let w_stride_ki = kw;
+
+                let input_data = &input.data;
+                let weight_data = &self.weight.data;
+                let bias_data = &self.bias.data;
+                let output_data = &mut output.data;
+
                 for b in 0..batch_size {
-                    for oc in 0..self.out_channels {
-                    let bias_val = self.bias.get(&[oc, 0]);
-                    for i in 0..out_h {
-                        for j in 0..out_w {
-                            let mut sum = bias_val;
-                            for ic in 0..self.in_channels {
-                                for ki in 0..kh {
-                                    for kj in 0..kw {
-                                        let x = input.get(&[b, ic, i + ki, j + kj]);
-                                        let w = self.weight.get(&[oc, ic, ki, kj]);
-                                        sum += x * w;
+                    let b_in_offset = b * in_stride_b;
+                    let b_out_offset = b * out_stride_b;
+
+                    for (oc, _) in bias_data.iter().enumerate().take(self.out_channels) {
+                        let bias_val = bias_data[oc];
+                        let oc_out_offset = b_out_offset + oc * out_stride_c;
+                        let oc_w_offset = oc * w_stride_oc;
+
+                        for i in 0..out_h {
+                            let out_row_offset = oc_out_offset + i * out_stride_h;
+                            let in_row_base = b_in_offset + i * in_stride_h;
+
+                            for j in 0..out_w {
+                                let mut sum = bias_val;
+                                for ic in 0..self.in_channels {
+                                    let ic_in_offset = in_row_base + ic * in_stride_c + j;
+                                    let ic_w_offset = oc_w_offset + ic * w_stride_ic;
+
+                                    for ki in 0..kh {
+                                        let ki_in_offset = ic_in_offset + ki * in_stride_h;
+                                        let ki_w_offset = ic_w_offset + ki * w_stride_ki;
+
+                                        for kj in 0..kw {
+                                            let x = input_data[ki_in_offset + kj];
+                                            let w = weight_data[ki_w_offset + kj];
+                                            sum += x * w;
+                                        }
                                     }
                                 }
+                                output_data[out_row_offset + j] = sum;
                             }
-                            output.set(&[b, oc, i, j], sum);
                         }
                     }
-                }
                 }
 
                 output
@@ -223,14 +282,21 @@ impl Conv2DLayer {
                 let out_h = d_output.shape[1];
                 let out_w = d_output.shape[2];
                 let mut d_bias = Tensor::new(vec![self.out_channels, 1]);
+                let out_stride_c = out_h * out_w;
+                let out_stride_h = out_w;
+                let dout_data = &d_output.data;
+                let dbias_data = &mut d_bias.data;
+
                 for oc in 0..self.out_channels {
                     let mut sum = 0.0;
+                    let oc_offset = oc * out_stride_c;
                     for i in 0..out_h {
+                        let row_offset = oc_offset + i * out_stride_h;
                         for j in 0..out_w {
-                            sum += d_output.get(&[oc, i, j]);
+                            sum += dout_data[row_offset + j];
                         }
                     }
-                    d_bias.set(&[oc, 0], sum);
+                    dbias_data[oc] = sum;
                 }
                 d_bias
             }
@@ -240,16 +306,25 @@ impl Conv2DLayer {
                 let out_w = d_output.shape[3];
                 let mut d_bias = Tensor::new(vec![self.out_channels, 1]);
 
+                let out_stride_b = self.out_channels * out_h * out_w;
+                let out_stride_c = out_h * out_w;
+                let out_stride_h = out_w;
+                let dout_data = &d_output.data;
+                let dbias_data = &mut d_bias.data;
+
                 for oc in 0..self.out_channels {
                     let mut sum = 0.0;
+                    let oc_offset = oc * out_stride_c;
                     for b in 0..batch_size {
+                        let b_offset = b * out_stride_b + oc_offset;
                         for i in 0..out_h {
+                            let row_offset = b_offset + i * out_stride_h;
                             for j in 0..out_w {
-                                sum += d_output.get(&[b, oc, i, j]);
+                                sum += dout_data[row_offset + j];
                             }
                         }
                     }
-                    d_bias.set(&[oc, 0], sum);
+                    dbias_data[oc] = sum;
                 }
 
                 d_bias
@@ -276,25 +351,54 @@ impl Conv2DLayer {
             3 => {
                 let out_h = d_output.shape[1];
                 let out_w = d_output.shape[2];
+                let h_in = input.shape[1];
+                let w_in = input.shape[2];
                 let mut d_weight = Tensor::new(vec![self.out_channels, self.in_channels, kh, kw]);
 
+                let in_stride_c = h_in * w_in;
+                let in_stride_h = w_in;
+
+                let out_stride_c = out_h * out_w;
+                let out_stride_h = out_w;
+
+                let w_stride_oc = self.in_channels * kh * kw;
+                let w_stride_ic = kh * kw;
+                let w_stride_ki = kw;
+
+                let input_data = &input.data;
+                let dout_data = &d_output.data;
+                let dweight_data = &mut d_weight.data;
+
                 for oc in 0..self.out_channels {
+                    let oc_w_offset = oc * w_stride_oc;
+                    let oc_out_offset = oc * out_stride_c;
+
                     for ic in 0..self.in_channels {
+                        let ic_w_offset = oc_w_offset + ic * w_stride_ic;
+                        let ic_in_offset = ic * in_stride_c;
+
                         for ki in 0..kh {
+                            let ki_w_offset = ic_w_offset + ki * w_stride_ki;
+                            let ki_in_offset = ic_in_offset + ki * in_stride_h;
+
                             for kj in 0..kw {
                                 let mut sum = 0.0;
+                                let in_base = ki_in_offset + kj;
+
                                 for i in 0..out_h {
+                                    let in_row = in_base + i * in_stride_h;
+                                    let out_row = oc_out_offset + i * out_stride_h;
+
                                     for j in 0..out_w {
-                                        let dout = d_output.get(&[oc, i, j]);
-                                        let x = input.get(&[ic, i + ki, j + kj]);
-                                        sum += dout * x;
+                                        sum += dout_data[out_row + j] * input_data[in_row + j];
                                     }
                                 }
-                                d_weight.set(&[oc, ic, ki, kj], sum);
+                                dweight_data[ki_w_offset + kj] = sum;
                             }
                         }
                     }
                 }
+
                 d_weight
             }
             4 => {
@@ -302,27 +406,62 @@ impl Conv2DLayer {
 
                 let out_h = d_output.shape[2];
                 let out_w = d_output.shape[3];
+                let h_in = input.shape[2];
+                let w_in = input.shape[3];
+
                 let mut d_weight = Tensor::new(vec![self.out_channels, self.in_channels, kh, kw]);
 
+                let in_stride_b = self.in_channels * h_in * w_in;
+                let in_stride_c = h_in * w_in;
+                let in_stride_h = w_in;
+
+                let out_stride_b = self.out_channels * out_h * out_w;
+                let out_stride_c = out_h * out_w;
+                let out_stride_h = out_w;
+
+                let w_stride_oc = self.in_channels * kh * kw;
+                let w_stride_ic = kh * kw;
+                let w_stride_ki = kw;
+
+                let input_data = &input.data;
+                let dout_data = &d_output.data;
+                let dweight_data = &mut d_weight.data;
+
                 for oc in 0..self.out_channels {
+                    let oc_w_offset = oc * w_stride_oc;
+                    let oc_out_offset = oc * out_stride_c;
+
                     for ic in 0..self.in_channels {
+                        let ic_w_offset = oc_w_offset + ic * w_stride_ic;
+                        let ic_in_offset = ic * in_stride_c;
+
                         for ki in 0..kh {
+                            let ki_w_offset = ic_w_offset + ki * w_stride_ki;
+                            let ki_in_offset = ic_in_offset + ki * in_stride_h;
+
                             for kj in 0..kw {
                                 let mut sum = 0.0;
-                                for b in 0..batch_size  {
+                                let in_base = ki_in_offset + kj;
+
+                                for b in 0..batch_size {
+                                    let b_in = b * in_stride_b + in_base;
+                                    let b_out = b * out_stride_b + oc_out_offset;
+
                                     for i in 0..out_h {
+                                        let in_row = b_in + i * in_stride_h;
+                                        let out_row = b_out + i * out_stride_h;
+
                                         for j in 0..out_w {
-                                            let dout = d_output.get(&[b, oc, i, j]);
-                                            let x = input.get(&[b, ic, i + ki, j + kj]);
-                                            sum += dout * x;
+                                            sum += dout_data[out_row + j] * input_data[in_row + j];
                                         }
                                     }
                                 }
-                                d_weight.set(&[oc, ic, ki, kj], sum);
+                                dweight_data[ki_w_offset + kj] = sum;
                             }
                         }
                     }
                 }
+
                 d_weight
             }
             _ => panic!("Conv2DLayer expects 3D [channels, height, width] or 4D [batch, channels, height, width]"),
@@ -349,45 +488,105 @@ impl Conv2DLayer {
                 let out_h = d_output.shape[1];
                 let out_w = d_output.shape[2];
                 let mut d_input = Tensor::new(vec![self.in_channels, h_in, w_in]);
+
+                let in_stride_c = h_in * w_in;
+                let in_stride_h = w_in;
+
+                let out_stride_c = out_h * out_w;
+                let out_stride_h = out_w;
+
+                let w_stride_oc = self.in_channels * kh * kw;
+                let w_stride_ic = kh * kw;
+                let w_stride_ki = kw;
+
+                let weight_data = &self.weight.data;
+                let dout_data = &d_output.data;
+                let dinput_data = &mut d_input.data;
+
                 for oc in 0..self.out_channels {
+                    let oc_w_offset = oc * w_stride_oc;
+                    let oc_out_offset = oc * out_stride_c;
+
                     for i in 0..out_h {
+                        let out_row = oc_out_offset + i * out_stride_h;
+                        let in_row_base = i * in_stride_h;
+
                         for j in 0..out_w {
-                            let dout = d_output.get(&[oc, i, j]);
+                            let dout = dout_data[out_row + j];
+                            let in_pixel = in_row_base + j;
+
                             for ic in 0..self.in_channels {
+                                let ic_w_offset = oc_w_offset + ic * w_stride_ic;
+                                let ic_in_offset = in_pixel + ic * in_stride_c;
+
                                 for ki in 0..kh {
+                                    let ki_w_offset = ic_w_offset + ki * w_stride_ki;
+                                    let ki_in_offset = ic_in_offset + ki * in_stride_h;
+
                                     for kj in 0..kw {
-                                        let w = self.weight.get(&[oc, ic, ki, kj]);
-                                        let prev = d_input.get(&[ic, i + ki, j + kj]);
-                                        d_input.set(&[ic, i + ki, j + kj], prev + dout * w);
+                                        let w = weight_data[ki_w_offset + kj];
+                                        dinput_data[ki_in_offset + kj] += dout * w;
                                     }
                                 }
                             }
                         }
                     }
                 }
+
                 d_input
             }
             4 => {
-                let batch_size =d_output.shape[0];
-
-                let h_in  = input.shape[2];
+                let batch_size = d_output.shape[0];
+                let h_in = input.shape[2];
                 let w_in = input.shape[3];
                 let out_h = d_output.shape[2];
                 let out_w = d_output.shape[3];
 
                 let mut d_input = Tensor::new(vec![batch_size, self.in_channels, h_in, w_in]);
 
+                let in_stride_b = self.in_channels * h_in * w_in;
+                let in_stride_c = h_in * w_in;
+                let in_stride_h = w_in;
+
+                let out_stride_b = self.out_channels * out_h * out_w;
+                let out_stride_c = out_h * out_w;
+                let out_stride_h = out_w;
+
+                let w_stride_oc = self.in_channels * kh * kw;
+                let w_stride_ic = kh * kw;
+                let w_stride_ki = kw;
+
+                let weight_data = &self.weight.data;
+                let dout_data = &d_output.data;
+                let dinput_data = &mut d_input.data;
+
                 for oc in 0..self.out_channels {
+                    let oc_w_offset = oc * w_stride_oc;
+                    let oc_out_offset = oc * out_stride_c;
+
                     for b in 0..batch_size {
+                        let b_out = b * out_stride_b + oc_out_offset;
+                        let b_in = b * in_stride_b;
+
                         for i in 0..out_h {
+                            let out_row = b_out + i * out_stride_h;
+                            let in_row_base = b_in + i * in_stride_h;
+
                             for j in 0..out_w {
-                                let dout = d_output.get(&[b, oc, i, j]);
+                                let dout = dout_data[out_row + j];
+                                let in_pixel = in_row_base + j;
+
                                 for ic in 0..self.in_channels {
+                                    let ic_w_offset = oc_w_offset + ic * w_stride_ic;
+                                    let ic_in_offset = in_pixel + ic * in_stride_c;
+
                                     for ki in 0..kh {
+                                        let ki_w_offset = ic_w_offset + ki * w_stride_ki;
+                                        let ki_in_offset = ic_in_offset + ki * in_stride_h;
+
                                         for kj in 0..kw {
-                                            let w = self.weight.get(&[oc, ic, ki, kj]);
-                                            let prev = d_input.get(&[b, ic, i + ki, j + kj]);
-                                            d_input.set(&[b, ic, i + ki, j + kj], prev + dout * w);
+                                            let w = weight_data[ki_w_offset + kj];
+                                            dinput_data[ki_in_offset + kj] += dout * w;
                                         }
                                     }
                                 }
@@ -395,6 +594,7 @@ impl Conv2DLayer {
                         }
                     }
                 }
+
                 d_input
             }
             _ => panic!("Conv2DLayer expects 3D [channels, height, width] or 4D [batch, channels, height, width]"),
