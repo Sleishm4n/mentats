@@ -138,7 +138,7 @@ impl Conv2DLayer {
                 let bias_data = &self.bias.data;
                 let output_data = &mut output.data;
 
-                for oc in 0..self.out_channels {
+                for (oc, _) in bias_data.iter().enumerate().take(self.out_channels) {
                     let bias_val = bias_data[oc];
                     let oc_out_offset = oc * out_stride_c;
                     let oc_w_offset = oc * w_stride_oc;
@@ -216,7 +216,7 @@ impl Conv2DLayer {
                     let b_in_offset = b * in_stride_b;
                     let b_out_offset = b * out_stride_b;
 
-                    for oc in 0..self.out_channels {
+                    for (oc, _) in bias_data.iter().enumerate().take(self.out_channels) {
                         let bias_val = bias_data[oc];
                         let oc_out_offset = b_out_offset + oc * out_stride_c;
                         let oc_w_offset = oc * w_stride_oc;
