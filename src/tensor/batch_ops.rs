@@ -29,27 +29,59 @@ impl Tensor {
 
         assert_eq!(n, other.shape[0], "dimension mismatch for matmul");
 
-        // `other` is shared across every batch, so flatten it once outside the loop
-        // rather than calling other.get() (stride-walked, bounds-checked) on every
-        // (b, i, j, k), this is the same caching trick as the plain matmul rewrite
-        let other_flat: Vec<f32> = (0..n)
-            .flat_map(|k| (0..p).map(move |j| other.get(&[k, j])))
-            .collect();
-
         let mut result = Tensor::new(vec![batch_size, m, p]);
 
-        for b in 0..batch_size {
-            for i in 0..m {
-                // Pre-extract this row so the inner k-loop below hits plain Vec
-                // indexing instead of self.get() (stride math) on every k.
-                let self_row: Vec<f32> = (0..n).map(|k| self.get(&[b, i, k])).collect();
-                for j in 0..p {
-                    let mut sum: f32 = 0.0;
+        let s_b = self.strides[0];
+        let s_i = self.strides[1];
+        let s_k = self.strides[2];
+        let o_k = other.strides[0];
+        let o_j = other.strides[1];
+
+        let a_data = &self.data;
+        let b_data = &other.data;
+        let c_data = &mut result.data;
+
+        let res_stride_b = m * p;
+        let res_stride_i = p;
+
+        if o_j == 1 {
+            for b in 0..batch_size {
+                let a_b_offset = b * s_b;
+                let c_b_offset = b * res_stride_b;
+
+                for i in 0..m {
+                    let a_row_offset = a_b_offset + i * s_i;
+                    let c_row_offset = c_b_offset + i * res_stride_i;
+                    let c_slice = &mut c_data[c_row_offset..c_row_offset + p];
 
                     for k in 0..n {
-                        sum += self_row[k] * other_flat[k * p + j];
+                        let a_val = a_data[a_row_offset + k * s_k];
+                        let b_row_offset = k * o_k;
+                        let b_slice = &b_data[b_row_offset..b_row_offset + p];
+
+                        for j in 0..p {
+                            c_slice[j] += a_val * b_slice[j];
+                        }
                     }
-                    result.set(&[b, i, j], sum);
+                }
+            }
+        } else {
+            for b in 0..batch_size {
+                let a_b_offset = b * s_b;
+                let c_b_offset = b * res_stride_b;
+
+                for i in 0..m {
+                    let a_row_offset = a_b_offset + i * s_i;
+                    let c_row_offset = c_b_offset + i * res_stride_i;
+
+                    for k in 0..n {
+                        let a_val = a_data[a_row_offset + k * s_k];
+                        let b_row_offset = k * o_k;
+
+                        for j in 0..p {
+                            c_data[c_row_offset + j] += a_val * b_data[b_row_offset + j * o_j];
+                        }
+                    }
                 }
             }
         }
@@ -80,28 +112,59 @@ impl Tensor {
 
         assert_eq!(n, other.shape[1], "dimension mismatch for matmul");
 
-        // Unlike matmul_batched, here it's `self` that's shared across batches
-        // (broadcast), so cache all its rows once up front.
-        let self_rows: Vec<Vec<f32>> = (0..m)
-            .map(|i| (0..n).map(move |k| self.get(&[i, k])).collect())
-            .collect();
-
         let mut result = Tensor::new(vec![batch_size, m, p]);
 
-        for b in 0..batch_size {
-            // `other` differs per batch, so this flatten has to stay inside the
-            // loop, indexed by b, not shared like self_rows above.
-            let other_flat: Vec<f32> = (0..n)
-                .flat_map(|k| (0..p).map(move |j| other.get(&[b, k, j])))
-                .collect();
-            for (i, row) in self_rows.iter().enumerate() {
-                for j in 0..p {
-                    let mut sum = 0.0;
+        let s_i = self.strides[0];
+        let s_k = self.strides[1];
+        let o_b = other.strides[0];
+        let o_k = other.strides[1];
+        let o_j = other.strides[2];
+
+        let a_data = &self.data;
+        let b_data = &other.data;
+        let c_data = &mut result.data;
+
+        let res_stride_b = m * p;
+        let res_stride_i = p;
+
+        if o_j == 1 {
+            for b in 0..batch_size {
+                let b_batch_offset = b * o_b;
+                let c_b_offset = b * res_stride_b;
+
+                for i in 0..m {
+                    let a_row_offset = i * s_i;
+                    let c_row_offset = c_b_offset + i * res_stride_i;
+                    let c_slice = &mut c_data[c_row_offset..c_row_offset + p];
 
                     for k in 0..n {
-                        sum += row[k] * other_flat[k * p + j];
+                        let a_val = a_data[a_row_offset + k * s_k];
+                        let b_row_offset = b_batch_offset + k * o_k;
+                        let b_slice = &b_data[b_row_offset..b_row_offset + p];
+
+                        for j in 0..p {
+                            c_slice[j] += a_val * b_slice[j];
+                        }
                     }
-                    result.set(&[b, i, j], sum);
+                }
+            }
+        } else {
+            for b in 0..batch_size {
+                let b_batch_offset = b * o_b;
+                let c_b_offset = b * res_stride_b;
+
+                for i in 0..m {
+                    let a_row_offset = i * s_i;
+                    let c_row_offset = c_b_offset + i * res_stride_i;
+
+                    for k in 0..n {
+                        let a_val = a_data[a_row_offset + k * s_k];
+                        let b_row_offset = b_batch_offset + k * o_k;
+
+                        for j in 0..p {
+                            c_data[c_row_offset + j] += a_val * b_data[b_row_offset + j * o_j];
+                        }
+                    }
                 }
             }
         }
