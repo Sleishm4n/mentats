@@ -2,8 +2,7 @@
 //!
 //! Performs valid 2D cross-correlation over unbatched 3D tensors:
 //! `[in_channels, height, width] -> [out_channels, out_h, out_w]`.
-use std::io::Read;
-use std::io::{self};
+use std::io::{self, Read};
 
 use crate::{
     nn::{init::kaiming_normal_conv, Layer},
@@ -96,6 +95,108 @@ impl Conv2DLayer {
     /// Panics if `input` is not rank 3, if `input.shape[0] != in_channels`,
     /// or if the input height or width is smaller than the kernel.
     pub fn forward(&mut self, input: &Tensor) -> Tensor {
+        self.input = Some(input.clone());
+
+        let (kh, kw) = self.kernel_size;
+        let k = self.in_channels * kh * kw;
+
+        let w_2d = Tensor::from_vec(vec![self.out_channels, k], self.weight.data.clone());
+
+        match input.shape.len() {
+            3 => {
+                assert_eq!(
+                    input.shape[0], self.in_channels,
+                    "Input channel count mismatch"
+                );
+
+                let h_in = input.shape[1];
+                let w_in = input.shape[2];
+
+                assert!(
+                    h_in >= kh,
+                    "Input height ({h_in}) must be >= kernel height ({kh})"
+                );
+                assert!(
+                    w_in >= kw,
+                    "Input width ({w_in}) must be >= kernel width ({kw})"
+                );
+
+                let out_h = h_in - kh + 1;
+                let out_w = w_in - kw + 1;
+
+                let x_col = self.im2col(input);
+
+                let y_2d = w_2d.matmul(&x_col);
+
+                let mut output = Tensor::from_vec(vec![self.out_channels, out_h, out_w], y_2d.data);
+
+                let spatial_size = out_h * out_w;
+                for oc in 0..self.out_channels {
+                    let bias_val = self.bias.data[oc];
+                    let start = oc * spatial_size;
+                    for val in &mut output.data[start..start + spatial_size] {
+                        *val += bias_val;
+                    }
+                }
+
+                output
+            }
+            4 => {
+                assert_eq!(
+                    input.shape[1], self.in_channels,
+                    "Input channel count mismatch"
+                );
+
+                let batch_size = input.shape[0];
+                let h_in = input.shape[2];
+                let w_in = input.shape[3];
+
+                assert!(
+                    h_in >= kh,
+                    "Input height ({h_in}) must be >= kernel height ({kh})"
+                );
+                assert!(
+                    w_in >= kw,
+                    "Input width ({w_in}) must be >= kernel width ({kw})"
+                );
+
+                let out_h = h_in - kh + 1;
+                let out_w = w_in - kw + 1;
+                let mut output = Tensor::new(vec![batch_size, self.out_channels, out_h, out_w]);
+
+                let in_sample_size = self.in_channels * h_in * w_in;
+                let out_sample_size = self.out_channels * out_h * out_w;
+                let spatial_size = out_h * out_w;
+
+                for b in 0..batch_size {
+                    let in_start = b * in_sample_size;
+                    let sample_data = input.data[in_start..in_start + in_sample_size].to_vec();
+                    let sample = Tensor::from_vec(vec![self.in_channels, h_in, w_in], sample_data);
+
+                    let x_col = self.im2col(&sample);
+                    let mut y_2d = w_2d.matmul(&x_col);
+
+                    for oc in 0..self.out_channels {
+                        let bias_val = self.bias.data[oc];
+                        let start = oc * spatial_size;
+                        for val in &mut y_2d.data[start..start + spatial_size] {
+                            *val += bias_val;
+                        }
+                    }
+
+                    let out_start = b * out_sample_size;
+                    output.data[out_start..out_start + out_sample_size]
+                        .copy_from_slice(&y_2d.data);
+                }
+
+                output
+            }
+            _ => panic!("Conv2DLayer expects 3D [channels, height, width] or 4D [batch, channels, height, width]"),
+        }
+    }
+
+    /// Kept for later benchmarking comparison project
+    pub fn _forward_generic(&mut self, input: &Tensor) -> Tensor {
         self.input = Some(input.clone());
 
         match input.shape.len() {
@@ -481,6 +582,69 @@ impl Conv2DLayer {
             .as_ref()
             .expect("forward must be called before backward");
         let (kh, kw) = self.kernel_size;
+        let k = self.in_channels * kh * kw;
+
+        let w_2d = Tensor::from_vec(vec![self.out_channels, k], self.weight.data.clone());
+        let w_2d_t = w_2d.transpose();
+
+        match d_output.shape.len() {
+            3 => {
+                let h_in = input.shape[1];
+                let w_in = input.shape[2];
+                let out_h = d_output.shape[1];
+                let out_w = d_output.shape[2];
+
+                let d_out_2d = Tensor::from_vec(
+                    vec![self.out_channels, out_h * out_w],
+                    d_output.data.clone(),
+                );
+
+                let d_x_col = w_2d_t.matmul(&d_out_2d);
+
+                self.col2im(&d_x_col, h_in, w_in)
+            }
+            4 => {
+                let batch_size = d_output.shape[0];
+                let h_in = input.shape[2];
+                let w_in = input.shape[3];
+
+                let out_h = d_output.shape[2];
+                let out_w = d_output.shape[3];
+
+                let mut d_input = Tensor::new(vec![batch_size, self.in_channels, h_in, w_in]);
+
+                let in_sample_size = self.in_channels * h_in * w_in;
+                let out_sample_size = self.out_channels * out_h * out_w;
+
+                for b in 0..batch_size {
+
+                    let out_start = b * out_sample_size;
+                    let d_out_sample = Tensor::from_vec(
+                        vec![self.out_channels, out_h * out_w],
+                        d_output.data[out_start..out_start + out_sample_size].to_vec(),
+                    );
+
+                    let d_x_col = w_2d_t.matmul(&d_out_sample);
+
+                    let d_input_sample = self.col2im(&d_x_col, h_in, w_in);
+
+                    let in_start = b * in_sample_size;
+                    d_input.data[in_start..in_start + in_sample_size]
+                        .copy_from_slice(&d_input_sample.data);
+                }
+                d_input
+            }
+            _ => panic!("Conv2DLayer expects 3D [channels, height, width] or 4D [batch, channels, height, width]"),
+        }
+    }
+
+    /// Kept for later benchmarking comparison project
+    fn _input_grad_generic(&self, d_output: &Tensor) -> Tensor {
+        let input = self
+            .input
+            .as_ref()
+            .expect("forward must be called before backward");
+        let (kh, kw) = self.kernel_size;
         match d_output.shape.len() {
             3 => {
                 let h_in = input.shape[1];
@@ -599,6 +763,76 @@ impl Conv2DLayer {
             }
             _ => panic!("Conv2DLayer expects 3D [channels, height, width] or 4D [batch, channels, height, width]"),
         }
+    }
+
+    /// Unfolds spatial receptive fields of a 3D tensor into a 2D matrix.
+    pub fn im2col(&self, input: &Tensor) -> Tensor {
+        let (kh, kw) = self.kernel_size;
+        let in_channels = self.in_channels;
+        let h_in = input.shape[1];
+        let w_in = input.shape[2];
+
+        let out_h = h_in - kh + 1;
+        let out_w = w_in - kw + 1;
+
+        let k = in_channels * kh * kw;
+        let n = out_h * out_w;
+
+        let mut col = Tensor::new(vec![k, n]);
+
+        let in_stride_c = h_in * w_in;
+        let in_stride_h = w_in;
+
+        for i in 0..out_h {
+            for j in 0..out_w {
+                let col_idx = i * out_w + j;
+
+                for ic in 0..in_channels {
+                    for ki in 0..kh {
+                        for kj in 0..kw {
+                            let row_idx = ic * (kh * kw) + ki * kw + kj;
+                            let in_idx = ic * in_stride_c + (i + ki) * in_stride_h + (j + kj);
+
+                            col.data[row_idx * n + col_idx] = input.data[in_idx];
+                        }
+                    }
+                }
+            }
+        }
+
+        col
+    }
+
+    pub fn col2im(&self, cols: &Tensor, h_in: usize, w_in: usize) -> Tensor {
+        let (kh, kw) = self.kernel_size;
+        let in_channels = self.in_channels;
+
+        let out_h = h_in - kh + 1;
+        let out_w = w_in - kw + 1;
+
+        let n = out_h * out_w;
+
+        let mut d_input = Tensor::new(vec![in_channels, h_in, w_in]);
+
+        let in_stride_c = h_in * w_in;
+        let in_stride_h = w_in;
+
+        for i in 0..out_h {
+            for j in 0..out_w {
+                let col_idx = i * out_w + j;
+                for ic in 0..in_channels {
+                    for ki in 0..kh {
+                        for kj in 0..kw {
+                            let row_idx = ic * (kh * kw) + ki * kw + kj;
+                            let in_idx = ic * in_stride_c + (i + ki) * in_stride_h + (j + kj);
+
+                            d_input.data[in_idx] += cols.data[row_idx * n + col_idx];
+                        }
+                    }
+                }
+            }
+        }
+        d_input
     }
 
     pub fn load(reader: &mut dyn Read) -> io::Result<Conv2DLayer> {
