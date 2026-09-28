@@ -11,7 +11,7 @@ documentation = "https://docs.rs/mentats"
 readme = "README.md"
 keywords = ["neural-network", "machine-learning", "deep-learning", "vae"]
 categories = ["science", "algorithms"]
-exclude = ["checkpoints/", "images/", "data/", "outputs/"]
+exclude = ["/checkpoints", "/images", "/data", "/outputs"]
 
 [dependencies]
 rand = "0.8"
