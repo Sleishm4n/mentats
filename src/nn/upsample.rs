@@ -56,20 +56,37 @@ impl Upsample2DLayer {
             3 => {
                 let h_in = input.shape[1];
                 let w_in = input.shape[2];
-
-                let out_h = h_in * self.scale_factor;
-                let out_w = w_in * self.scale_factor;
-
                 let channels = input.shape[0];
+                let scale = self.scale_factor;
+
+                let out_h = h_in * scale;
+                let out_w = w_in * scale;
+
                 let mut output = Tensor::new(vec![channels, out_h, out_w]);
 
-                for c in 0..channels {
-                    for oh in 0..out_h {
-                        for ow in 0..out_w {
-                            let ih = oh / self.scale_factor;
-                            let iw = ow / self.scale_factor;
+                let in_data = &input.data;
+                let out_data = &mut output.data;
 
-                            output.set(&[c, oh, ow], input.get(&[c, ih, iw]));
+                for c in 0..channels {
+                    let in_plane_offset = c * (h_in * w_in);
+                    let out_plane_offset = c * (out_h * out_w);
+
+                    for ih in 0..h_in {
+                        let in_row_start = in_plane_offset + ih * w_in;
+                        let out_row_base = out_plane_offset + (ih * scale) * out_w;
+
+                        for iw in 0..w_in {
+                            let val = in_data[in_row_start + iw];
+                            let out_col_start = out_row_base + iw * scale;
+                            for sw in 0..scale {
+                                out_data[out_col_start + sw] = val;
+                            }
+                        }
+
+                        for sh in 1..scale {
+                            let copy_row_start = out_row_base + sh * out_w;
+                            out_data
+                                .copy_within(out_row_base..out_row_base + out_w, copy_row_start);
                         }
                     }
                 }
@@ -78,24 +95,43 @@ impl Upsample2DLayer {
             }
             4 => {
                 let batch_size = input.shape[0];
-
                 let channels = input.shape[1];
                 let h_in = input.shape[2];
                 let w_in = input.shape[3];
+                let scale = self.scale_factor;
 
-                let out_h = h_in * self.scale_factor;
-                let out_w = w_in * self.scale_factor;
+                let out_h = h_in * scale;
+                let out_w = w_in * scale;
 
                 let mut output = Tensor::new(vec![batch_size, channels, out_h, out_w]);
 
-                for b in 0..batch_size {
-                    for c in 0..channels {
-                        for oh in 0..out_h {
-                            for ow in 0..out_w {
-                                let ih = oh / self.scale_factor;
-                                let iw = ow / self.scale_factor;
-                                output.set(&[b, c, oh, ow], input.get(&[b, c, ih, iw]));
+                let in_data = &input.data;
+                let out_data = &mut output.data;
+
+                let in_spatial_size = h_in * w_in;
+                let out_spatial_size = out_h * out_w;
+                let total_planes = batch_size * channels;
+
+                for plane in 0..total_planes {
+                    let in_plane_offset = plane * in_spatial_size;
+                    let out_plane_offset = plane * out_spatial_size;
+
+                    for ih in 0..h_in {
+                        let in_row_start = in_plane_offset + ih * w_in;
+                        let out_row_base = out_plane_offset + (ih * scale) * out_w;
+
+                        for iw in 0..w_in {
+                            let val = in_data[in_row_start + iw];
+                            let out_col_start = out_row_base + iw * scale;
+                            for sw in 0..scale {
+                                out_data[out_col_start + sw] = val;
                             }
+                        }
+
+                        for sh in 1..scale {
+                            let copy_row_start = out_row_base + sh * out_w;
+                            out_data
+                                .copy_within(out_row_base..out_row_base + out_w, copy_row_start);
                         }
                     }
                 }
@@ -121,19 +157,34 @@ impl Upsample2DLayer {
 
         match d_output.shape.len() {
             3 => {
-                let out_h = d_output.shape[1];
-                let out_w = d_output.shape[2];
+                let h_in = input_shape[1];
+                let w_in = input_shape[2];
                 let channels = input_shape[0];
+                let scale = self.scale_factor;
+
+                let out_w = d_output.shape[2];
+
+                let dout_data = &d_output.data;
+                let din_data = &mut d_input.data;
 
                 for c in 0..channels {
-                    for oh in 0..out_h {
-                        for ow in 0..out_w {
-                            let ih = oh / self.scale_factor;
-                            let iw = ow / self.scale_factor;
+                    let in_plane_offset = c * (h_in * w_in);
+                    let out_plane_offset = c * (d_output.shape[1] * out_w);
 
-                            let dout = d_output.get(&[c, oh, ow]);
-                            let prev = d_input.get(&[c, ih, iw]);
-                            d_input.set(&[c, ih, iw], prev + dout);
+                    for ih in 0..h_in {
+                        let in_row_start = in_plane_offset + ih * w_in;
+                        let out_row_base = out_plane_offset + (ih * scale) * out_w;
+
+                        for iw in 0..w_in {
+                            let out_col_start = out_row_base + iw * scale;
+                            let mut sum = 0.0;
+                            for sh in 0..scale {
+                                let row_offset = out_col_start + sh * out_w;
+                                for sw in 0..scale {
+                                    sum += dout_data[row_offset + sw];
+                                }
+                            }
+                            din_data[in_row_start + iw] = sum;
                         }
                     }
                 }
@@ -142,22 +193,38 @@ impl Upsample2DLayer {
             }
             4 => {
                 let batch_size = input_shape[0];
-
-                let out_h = d_output.shape[2];
-                let out_w = d_output.shape[3];
                 let channels = input_shape[1];
+                let h_in = input_shape[2];
+                let w_in = input_shape[3];
+                let scale = self.scale_factor;
 
-                for b in 0..batch_size {
-                    for c in 0..channels {
-                        for oh in 0..out_h {
-                            for ow in 0..out_w {
-                                let ih = oh / self.scale_factor;
-                                let iw = ow / self.scale_factor;
+                let out_w = d_output.shape[3];
 
-                                let dout = d_output.get(&[b, c, oh, ow]);
-                                let prev = d_input.get(&[b, c, ih, iw]);
-                                d_input.set(&[b, c, ih, iw], prev + dout);
+                let dout_data = &d_output.data;
+                let din_data = &mut d_input.data;
+
+                let in_spatial_size = h_in * w_in;
+                let out_spatial_size = d_output.shape[2] * out_w;
+                let total_planes = batch_size * channels;
+
+                for plane in 0..total_planes {
+                    let in_plane_offset = plane * in_spatial_size;
+                    let out_plane_offset = plane * out_spatial_size;
+
+                    for ih in 0..h_in {
+                        let in_row_start = in_plane_offset + ih * w_in;
+                        let out_row_base = out_plane_offset + (ih * scale) * out_w;
+
+                        for iw in 0..w_in {
+                            let out_col_start = out_row_base + iw * scale;
+                            let mut sum = 0.0;
+                            for sh in 0..scale {
+                                let row_offset = out_col_start + sh * out_w;
+                                for sw in 0..scale {
+                                    sum += dout_data[row_offset + sw];
+                                }
                             }
+                            din_data[in_row_start + iw] = sum;
                         }
                     }
                 }
