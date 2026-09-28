@@ -69,12 +69,18 @@ impl Pad2DLayer {
 
                 let mut output = Tensor::new(vec![channels, out_h, out_w]);
 
+                let in_data = &input.data;
+                let out_data = &mut output.data;
+
                 for c in 0..channels {
+                    let in_c_offset = c * h_in * w_in;
+                    let out_c_offset = c * out_h * out_w;
+
                     for ih in 0..h_in {
-                        for iw in 0..w_in {
-                            let val = input.get(&[c, ih, iw]);
-                            output.set(&[c, ih + ph, iw + pw], val);
-                        }
+                        let in_start = in_c_offset + ih * w_in;
+                        let out_start = out_c_offset + (ih + ph) * out_w + pw;
+                        out_data[out_start..out_start + w_in]
+                            .copy_from_slice(&in_data[in_start..in_start + w_in]);
                     }
                 }
 
@@ -93,14 +99,22 @@ impl Pad2DLayer {
 
                 let mut output = Tensor::new(vec![batch_size, channels, out_h, out_w]);
 
-                for b in 0..batch_size {
-                    for c in 0..channels {
-                        for ih in 0..h_in {
-                            for iw in 0..w_in {
-                                let val = input.get(&[b, c, ih, iw]);
-                                output.set(&[b, c, ih + ph, iw + pw], val);
-                            }
-                        }
+                let in_data = &input.data;
+                let out_data = &mut output.data;
+
+                let in_spatial_size = h_in * w_in;
+                let out_spatial_size = out_h * out_w;
+                let total_planes = batch_size * channels;
+
+                for plane in 0..total_planes {
+                    let in_plane_offset = plane * in_spatial_size;
+                    let out_plane_offset = plane * out_spatial_size;
+
+                    for ih in 0..h_in {
+                        let in_start = in_plane_offset + ih * w_in;
+                        let out_start = out_plane_offset + (ih + ph) * out_w + pw;
+                        out_data[out_start..out_start + w_in]
+                            .copy_from_slice(&in_data[in_start..in_start + w_in]);
                     }
                 }
 
@@ -130,12 +144,21 @@ impl Pad2DLayer {
                 let channels = input_shape[0];
                 let (ph, pw) = self.padding;
 
+                let out_h = h_in + (2 * ph);
+                let out_w = w_in + (2 * pw);
+
+                let dout_data = &d_output.data;
+                let din_data = &mut d_input.data;
+
                 for c in 0..channels {
+                    let in_c_offset = c * h_in * w_in;
+                    let out_c_offset = c * out_h * out_w;
+
                     for ih in 0..h_in {
-                        for iw in 0..w_in {
-                            let val = d_output.get(&[c, ih + ph, iw + pw]);
-                            d_input.set(&[c, ih, iw], val);
-                        }
+                        let in_start = in_c_offset + ih * w_in;
+                        let out_start = out_c_offset + (ih + ph) * out_w + pw;
+                        din_data[in_start..in_start + w_in]
+                            .copy_from_slice(&dout_data[out_start..out_start + w_in]);
                     }
                 }
 
@@ -144,19 +167,30 @@ impl Pad2DLayer {
             4 => {
                 let batch_size = input_shape[0];
 
+                let channels = input_shape[1];
                 let h_in = input_shape[2];
                 let w_in = input_shape[3];
-                let channels = input_shape[1];
                 let (ph, pw) = self.padding;
 
-                for b in 0..batch_size {
-                    for c in 0..channels {
-                        for ih in 0..h_in {
-                            for iw in 0..w_in {
-                                let val = d_output.get(&[b, c, ih + ph, iw + pw]);
-                                d_input.set(&[b, c, ih, iw], val);
-                            }
-                        }
+                let out_h = h_in + (2 * ph);
+                let out_w = w_in + (2 * pw);
+
+                let dout_data = &d_output.data;
+                let din_data = &mut d_input.data;
+
+                let in_spatial_size = h_in * w_in;
+                let out_spatial_size = out_h * out_w;
+                let total_planes = batch_size * channels;
+
+                for plane in 0..total_planes {
+                    let in_plane_offset = plane * in_spatial_size;
+                    let out_plane_offset = plane * out_spatial_size;
+
+                    for ih in 0..h_in {
+                        let in_start = in_plane_offset + ih * w_in;
+                        let out_start = out_plane_offset + (ih + ph) * out_w + pw;
+                        din_data[in_start..in_start + w_in]
+                            .copy_from_slice(&dout_data[out_start..out_start + w_in]);
                     }
                 }
 

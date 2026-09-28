@@ -448,6 +448,74 @@ impl Conv2DLayer {
             .as_ref()
             .expect("forward must be called before backward");
         let (kh, kw) = self.kernel_size;
+
+        match d_output.shape.len() {
+            3 => {
+                let out_h = d_output.shape[1];
+                let out_w = d_output.shape[2];
+
+                let x_col = self.im2col(input);
+                let x_col_t = x_col.transpose();
+
+                let d_out_2d = Tensor::from_vec(
+                    vec![self.out_channels, out_h * out_w],
+                    d_output.data.clone(),
+                );
+
+                let d_w_2d = d_out_2d.matmul(&x_col_t);
+
+                Tensor::from_vec(
+                    vec![self.out_channels, self.in_channels, kh, kw],
+                    d_w_2d.data,
+                )
+            }
+            4 => {
+                let batch_size = d_output.shape[0];
+                let h_in = input.shape[2];
+                let w_in = input.shape[3];
+                let out_h = d_output.shape[2];
+                let out_w = d_output.shape[3];
+
+                let in_sample_size = self.in_channels * h_in * w_in;
+                let out_sample_size = self.out_channels * out_h * out_w;
+
+                let mut d_weight = Tensor::new(vec![self.out_channels, self.in_channels, kh, kw]);
+
+                for b in 0..batch_size {
+                    let in_start = b * in_sample_size;
+                    let sample = Tensor::from_vec(
+                        vec![self.in_channels, h_in, w_in],
+                        input.data[in_start..in_start + in_sample_size].to_vec(),
+                    );
+
+                    let x_col = self.im2col(&sample);
+                    let x_col_t = x_col.transpose();
+
+                    let out_start = b * out_sample_size;
+                    let d_out_sample = Tensor::from_vec(
+                        vec![self.out_channels, out_h * out_w],
+                        d_output.data[out_start..out_start + out_sample_size].to_vec(),
+                    );
+
+                    let d_w_sample = d_out_sample.matmul(&x_col_t);
+
+                    for (dw, &val) in d_weight.data.iter_mut().zip(&d_w_sample.data) {
+                        *dw += val;
+                    }
+                }
+
+                d_weight
+            }
+            _ => panic!("Conv2DLayer expects 3D [channels, height, width] or 4D [batch, channels, height, width]"),
+        }
+    }
+
+    fn _weight_grad_generic(&self, d_output: &Tensor) -> Tensor {
+        let input = self
+            .input
+            .as_ref()
+            .expect("forward must be called before backward");
+        let (kh, kw) = self.kernel_size;
         match d_output.shape.len() {
             3 => {
                 let out_h = d_output.shape[1];

@@ -81,19 +81,30 @@ impl MaxPool2DLayer {
                 let mut output = Tensor::new(vec![channels, out_h, out_w]);
                 let mut argmax = Vec::with_capacity(channels * out_h * out_w);
 
+                let in_data = &input.data;
+                let out_data = &mut output.data;
+
                 for c in 0..channels {
+                    let in_plane_offset = c * (h_in * w_in);
+                    let out_plane_offset = c * (out_h * out_w);
+
                     for oh in 0..out_h {
+                        let h_start = oh * self.stride;
+                        let h_end = h_start + kh;
+                        let out_row_offset = out_plane_offset + oh * out_w;
+
                         for ow in 0..out_w {
-                            let h_start = oh * self.stride;
-                            let h_end = h_start + kh;
                             let w_start = ow * self.stride;
                             let w_end = w_start + kw;
 
-                            let mut max_val = input.get(&[c, h_start, w_start]);
+                            let first_idx = in_plane_offset + h_start * w_in + w_start;
+                            let mut max_val = in_data[first_idx];
                             let mut max_pos = (h_start, w_start);
+
                             for i in h_start..h_end {
+                                let in_row_offset = in_plane_offset + i * w_in;
                                 for j in w_start..w_end {
-                                    let val = input.get(&[c, i, j]);
+                                    let val = in_data[in_row_offset + j];
                                     if val > max_val {
                                         max_val = val;
                                         max_pos = (i, j);
@@ -101,7 +112,7 @@ impl MaxPool2DLayer {
                                 }
                             }
 
-                            output.set(&[c, oh, ow], max_val);
+                            out_data[out_row_offset + ow] = max_val;
                             argmax.push(max_pos);
                         }
                     }
@@ -134,30 +145,43 @@ impl MaxPool2DLayer {
                 let mut output = Tensor::new(vec![batch_size, channels, out_h, out_w]);
                 let mut argmax = Vec::with_capacity(batch_size * channels * out_h * out_w);
 
-                for b in 0..batch_size {
-                    for c in 0..channels {
-                        for oh in 0..out_h {
-                            for ow in 0..out_w {
-                                let h_start = oh * self.stride;
-                                let h_end = h_start + kh;
-                                let w_start = ow * self.stride;
-                                let w_end = w_start + kw;
+                let in_data = &input.data;
+                let out_data = &mut output.data;
 
-                                let mut max_val = input.get(&[b, c, h_start, w_start]);
-                                let mut max_pos = (h_start, w_start);
-                                for i in h_start..h_end {
-                                    for j in w_start..w_end {
-                                        let val = input.get(&[b, c, i, j]);
-                                        if val > max_val {
-                                            max_val = val;
-                                            max_pos = (i, j);
-                                        }
+                let in_spatial_size = h_in * w_in;
+                let out_spatial_size = out_h * out_w;
+                let total_planes = batch_size * channels;
+
+                for plane in 0..total_planes {
+                    let in_plane_offset = plane * in_spatial_size;
+                    let out_plane_offset = plane * out_spatial_size;
+
+                    for oh in 0..out_h {
+                        let h_start = oh * self.stride;
+                        let h_end = h_start + kh;
+                        let out_row_offset = out_plane_offset + oh * out_w;
+
+                        for ow in 0..out_w {
+                            let w_start = ow * self.stride;
+                            let w_end = w_start + kw;
+
+                            let first_idx = in_plane_offset + h_start * w_in + w_start;
+                            let mut max_val = in_data[first_idx];
+                            let mut max_pos = (h_start, w_start);
+
+                            for i in h_start..h_end {
+                                let in_row_offset = in_plane_offset + i * w_in;
+                                for j in w_start..w_end {
+                                    let val = in_data[in_row_offset + j];
+                                    if val > max_val {
+                                        max_val = val;
+                                        max_pos = (i, j);
                                     }
                                 }
-
-                                output.set(&[b, c, oh, ow], max_val);
-                                argmax.push(max_pos);
                             }
+
+                            out_data[out_row_offset + ow] = max_val;
+                            argmax.push(max_pos);
                         }
                     }
                 }
@@ -192,21 +216,31 @@ impl MaxPool2DLayer {
 
         match d_output.shape.len() {
             3 => {
+                let h_in = input_shape[1];
+                let w_in = input_shape[2];
+                let channels = input_shape[0];
                 let out_h = d_output.shape[1];
                 let out_w = d_output.shape[2];
-                let channels = input_shape[0];
+
+                let dout_data = &d_output.data;
+                let din_data = &mut d_input.data;
+
+                let in_spatial_size = h_in * w_in;
+                let out_spatial_size = out_h * out_w;
 
                 let mut idx = 0;
                 for c in 0..channels {
+                    let in_plane_offset = c * in_spatial_size;
+                    let out_plane_offset = c * out_spatial_size;
+
                     for oh in 0..out_h {
+                        let out_row_offset = out_plane_offset + oh * out_w;
                         for ow in 0..out_w {
                             let (max_h, max_w) = argmax[idx];
                             idx += 1;
 
-                            let dout = d_output.get(&[c, oh, ow]);
-
-                            let prev = d_input.get(&[c, max_h, max_w]);
-                            d_input.set(&[c, max_h, max_w], prev + dout);
+                            let dout = dout_data[out_row_offset + ow];
+                            din_data[in_plane_offset + max_h * w_in + max_w] += dout;
                         }
                     }
                 }
@@ -214,24 +248,32 @@ impl MaxPool2DLayer {
             }
             4 => {
                 let batch_size = d_output.shape[0];
-
+                let channels = input_shape[1];
+                let h_in = input_shape[2];
+                let w_in = input_shape[3];
                 let out_h = d_output.shape[2];
                 let out_w = d_output.shape[3];
-                let channels = input_shape[1];
+
+                let dout_data = &d_output.data;
+                let din_data = &mut d_input.data;
+
+                let in_spatial_size = h_in * w_in;
+                let out_spatial_size = out_h * out_w;
+                let total_planes = batch_size * channels;
 
                 let mut idx = 0;
-                for b in 0..batch_size {
-                    for c in 0..channels {
-                        for oh in 0..out_h {
-                            for ow in 0..out_w {
-                                let (max_h, max_w) = argmax[idx];
-                                idx += 1;
+                for plane in 0..total_planes {
+                    let in_plane_offset = plane * in_spatial_size;
+                    let out_plane_offset = plane * out_spatial_size;
 
-                                let dout = d_output.get(&[b, c, oh, ow]);
+                    for oh in 0..out_h {
+                        let out_row_offset = out_plane_offset + oh * out_w;
+                        for ow in 0..out_w {
+                            let (max_h, max_w) = argmax[idx];
+                            idx += 1;
 
-                                let prev = d_input.get(&[b, c, max_h, max_w]);
-                                d_input.set(&[b, c, max_h, max_w], prev + dout);
-                            }
+                            let dout = dout_data[out_row_offset + ow];
+                            din_data[in_plane_offset + max_h * w_in + max_w] += dout;
                         }
                     }
                 }
