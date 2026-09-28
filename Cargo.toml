@@ -1,6 +1,6 @@
 [package]
 name = "mentats"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Sam Leishman <Sam.g.leishman@gmail.com>"]
 description = "A from-scratch neural network library in Rust, built to understand deep learning fundamentals through implementation."
@@ -11,7 +11,7 @@ documentation = "https://docs.rs/mentats"
 readme = "README.md"
 keywords = ["neural-network", "machine-learning", "deep-learning", "vae"]
 categories = ["science", "algorithms"]
-exclude = ["checkpoints/", "images/"]
+exclude = ["checkpoints/", "images/", "data/", "outputs/"]
 
 [dependencies]
 rand = "0.8"

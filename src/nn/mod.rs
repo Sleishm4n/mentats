@@ -3,16 +3,22 @@
 //! This module provides the core building blocks for constructing and
 //! training neural networks, including layers, activation functions,
 //! parameter initialisation, tensor reshaping, and sampling.
+//!
 //! ## Modules
 //!
 //! - [`activation`] - Activation functions and activation layers.
+//! - [`builder`] - Intuative builder for networks.
+//! - [`conv`] - Convolutional layer.
 //! - [`flatten`] - A layer for flattening tensors.
 //! - [`init`] - Parameter initialisation methods.
 //! - [`linear`] - Linear (fully connected) layers.
 //! - [`network`] - Neural network construction and management.
+//! - [`padding`] - Padding layer.
+//! - [`pooling`] - Pooling layer.
 //! - [`reshape`] - Layers for reshaping tensors.
 //! - [`sampling`] - Sampling layers used by probabilistic models such as VAEs.
 //! - [`softmax`] - Softmax activation and related functionality.
+//! - [`upsample`] - Upsampling layer.
 use crate::tensor::Tensor;
 use std::io::{self, Write};
 
@@ -30,11 +36,17 @@ pub mod sampling;
 pub mod softmax;
 pub mod upsample;
 
+pub use builder::NetworkBuilder;
+pub use network::Network;
+
 pub type Linear = linear::LinearLayer;
 pub type Conv2d = conv::Conv2DLayer;
 pub type Flatten = flatten::FlattenLayer;
 pub type Reshape = reshape::ReshapeLayer;
 pub type Softmax = softmax::SoftmaxLayer;
+pub type MaxPool2d = pooling::MaxPool2DLayer;
+pub type Pad2d = padding::Pad2DLayer;
+pub type Upsample2d = upsample::Upsample2DLayer;
 
 /// The common interface every layer implements
 ///
@@ -57,7 +69,7 @@ pub trait Layer {
     /// [`Layer::get_params`]. Used by optimiser to apply update
     fn set_params(&mut self, params: Vec<Tensor>);
 
-    ///Returns the layer's trainable parameters. Parameterless layers
+    /// Returns the layer's trainable parameters. Parameterless layers
     /// return an empty vector
     fn get_params(&self) -> Vec<Tensor>;
 

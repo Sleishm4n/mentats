@@ -27,7 +27,7 @@
 //! # Modules
 //!
 //! - [`tensor`] - the core `Tensor` type: matmul, permute, elementwise maps, broadcasting.
-//! - [`nn`] - layers, the [`NetworkBuilder`] and the [`nn::network::Network`] container.
+//! - [`nn`] - layers, the [`nn::NetworkBuilder`] and the [`nn::Network`] container.
 //! - [`loss`] - MSE, cross-entropy, and KL divergence.
 //! - [`optimiser`] - the Adam optimiser.
 //! - [`data`] - dataset loaders (MNIST).
