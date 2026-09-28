@@ -6,7 +6,7 @@ A neural network library built from scratch in Rust, designed to understand deep
 
 mentats is an educational framework implementing core neural network operations without external libraries. Every operation is implemented from first principles.
 
-**Current Milestone:** Convolutional Conditional VAE (CNN VAE) on MNIST. Combines the convolutional feature extraction with nearest neighbour upsampling and convolutional decoding to generate class defined digits ($0\rightarrow 9$) from random latent vectors $z \sim \mathcal{N}(0, I)$
+**Current Milestone:** Batched Convolutional Conditional VAE (Batched CNN CVAE) on MNIST. Combines 4D mini-batch tensor processing (batch size 128), multi-stage convolutional feature extraction, `im2col`/`col2im` GEMM-based convolutions, nearest-neighbour upsampling, and class-conditioned generation ($0\rightarrow 9$) from random latent vectors $z \sim \mathcal{N}(0, I)$.
 
 <p align="center">
 <img src="images/final_showcase_grid_4x4.png" alt="Generated 8s" width="300">
@@ -15,7 +15,9 @@ mentats is an educational framework implementing core neural network operations 
 
 _(Left: 4x4 class-conditioned generation showcase covering classes 0–9; Right: 16 distinct styles of digit 8 sampled across the latent space showing stroke variations)_
 
-**Previous Milestone:** Convolutional classification on MNIST at **97.69%** accuracy
+**Previous Milestone:** Convolutional Conditional VAE (CNN CVAE) on MNIST with sample-by-sample training.
+
+**Earlier Milestone:** Convolutional classification on MNIST at **97.69%** accuracy
 
 **Earlier Milestone:** Conditional VAE (CVAE) on MNIST, generates digits of a chosen class from a random latent vector, using free-bits KL to avoid posterior collapse
 
@@ -67,7 +69,58 @@ t-SNE preserves the local neighbourhood structure and gives clearer visual on th
 
 ## Network Architecture
 
-**CNN CVAE (Convolutional Conditional VAE)**
+**Batched CNN CVAE (Convolutional Conditional VAE with Mini-Batching)**
+- **Convolutional Encoder**:
+```
+Input ([batch, 784])
+  └─ ReshapeLayer ([batch, 1, 28, 28])
+  └─ Conv2DLayer (1 → 16 channels, 3x3 kernel, Kaiming normal)
+  └─ ReLU
+  └─ MaxPool2DLayer (2x2 pool, stride 2 → [batch, 16, 13, 13])
+  └─ Conv2DLayer (16 → 32 channels, 3x3 kernel, Kaiming normal)
+  └─ ReLU
+  └─ MaxPool2DLayer (2x2 pool, stride 2 → [batch, 32, 5, 5])
+  └─ FlattenLayer ([batch, 800])
+```
+- **Dense Latent Head**:
+```
+Concat [Conv Features (800), One-Hot Label (10)]
+  └─ LinearLayer (810 → 20; mu, log_var; latent_dim=10)
+  └─ GaussianSampler (reparameterization trick)
+```
+- **Convolutional Decoder**:
+```
+Concat [Latent z (10), One-Hot Label (10)]
+  └─ LinearLayer (20 → 16 x 7 x 7 = 784)
+  └─ ReshapeLayer ([batch, 16, 7, 7])
+  └─ ReLU
+  └─ Upsample2DLayer (2x nearest-neighbor → [batch, 16, 14, 14])
+  └─ Pad2DLayer (pad 1 → [batch, 16, 16, 16])
+  └─ Conv2DLayer (16 → 16 channels, 3x3)
+  └─ ReLU
+  └─ Upsample2DLayer (2x nearest-neighbor → [batch, 16, 32, 32])
+  └─ Pad2DLayer (pad 1 → [batch, 16, 34, 34])
+  └─ Conv2DLayer (16 → 8 channels, 3x3 → [batch, 8, 32, 32])
+  └─ ReLU
+  └─ Pad2DLayer (pad 1 → [batch, 8, 34, 34])
+  └─ Conv2DLayer (8 → 1 channel, 3x3 → [batch, 1, 28, 28])
+  └─ FlattenLayer ([batch, 784])
+```
+Constructed cleanly using the fluent `Network::builder()` API:
+```rust
+let mut conv_encoder = Network::builder()
+    .reshape(vec![1, 28, 28])
+    .conv2d_kaiming(1, 16, (3, 3))
+    .relu()
+    .max_pool2d()
+    .conv2d_kaiming(16, 32, (3, 3))
+    .relu()
+    .max_pool2d()
+    .flatten()
+    .build();
+```
+
+**CNN CVAE (Convolutional Conditional VAE - Unbatched)**
 
 - **Convolutional Encoder**:
 
