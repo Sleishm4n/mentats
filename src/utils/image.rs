@@ -72,3 +72,44 @@ pub fn save_pgm_grid_4x4(
     }
     Ok(())
 }
+
+pub fn save_ppm(tensor: &Tensor, path: &Path) -> std::io::Result<()> {
+    let mut file = File::create(path)?;
+    // P6 = binary RGB, 32 32 = width height, 255 = max color
+    writeln!(file, "P6\n32 32\n255")?;
+    let mut bytes = Vec::with_capacity(32 * 32 * 3);
+    for row in 0..32 {
+        for col in 0..32 {
+            for ch in 0..3 {
+                let val = tensor.get(&[ch, row, col]).clamp(0.0, 1.0);
+                bytes.push((val * 255.0) as u8);
+            }
+        }
+    }
+    file.write_all(&bytes)?;
+    Ok(())
+}
+
+pub fn save_ppm_grid_4x4(samples: &[Tensor], path: &Path) -> std::io::Result<()> {
+    assert_eq!(samples.len(), 16);
+    let mut file = File::create(path)?;
+    // 4 digits wide x 32 = 128, 4 digits high x 32 = 128
+    writeln!(file, "P6\n128 128\n255")?;
+    let mut bytes = Vec::with_capacity(128 * 128 * 3);
+    for grid_row in 0..4 {
+        for pixel_row in 0..32 {
+            for grid_col in 0..4 {
+                let sample_idx = grid_row * 4 + grid_col;
+                for pixel_col in 0..32 {
+                    for ch in 0..3 {
+                        let v = samples[sample_idx].get(&[ch, pixel_row, pixel_col]);
+                        let p = (1.0 / (1.0 + (-v).exp())).clamp(0.0, 1.0);
+                        bytes.push((p * 255.0).round() as u8);
+                    }
+                }
+            }
+        }
+    }
+    file.write_all(&bytes)?;
+    Ok(())
+}

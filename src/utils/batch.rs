@@ -94,3 +94,31 @@ pub fn slice_batch(tensor: &Tensor, indices: &[usize]) -> Vec<Tensor> {
 
     result
 }
+
+pub fn stack_targets(labels: &[u8]) -> Tensor {
+    let batch_size = labels.len();
+    let mut data = vec![0.0f32; batch_size * 10];
+    for (b, &label) in labels.iter().enumerate() {
+        assert!(label < 10, "label must be in range 0..=9");
+        data[b * 10 + label as usize] = 1.0;
+    }
+    Tensor::from_vec(vec![batch_size, 10, 1], data)
+}
+
+pub fn stack_tensor_refs(tensors: &[&Tensor]) -> Tensor {
+    assert!(!tensors.is_empty(), "cannot stack empty tensor list");
+
+    let first_shape = &tensors[0].shape;
+    let batch_size = tensors.len();
+    let mut stacked_shape = vec![batch_size];
+
+    stacked_shape.extend(first_shape);
+    let sample_elements: usize = first_shape.iter().product();
+    let mut data = Vec::with_capacity(batch_size * sample_elements);
+
+    for t in tensors {
+        data.extend_from_slice(&t.data);
+    }
+
+    Tensor::from_vec(stacked_shape, data)
+}
