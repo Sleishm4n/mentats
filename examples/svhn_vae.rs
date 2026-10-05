@@ -13,7 +13,12 @@ use std::path::Path;
 use std::time::Instant;
 
 fn main() {
-    let epochs: usize = 100;
+    let args: Vec<String> = std::env::args().collect();
+    let epochs: usize = if args.len() > 1 {
+        args[1].parse().unwrap_or(100)
+    } else {
+        100
+    };
     let lr = 0.001;
     let batch_size = 64;
     let total_warmup_epochs = 20.0;
