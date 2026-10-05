@@ -1,0 +1,65 @@
+name: Train SVHN VAE
+
+on:
+  workflow_dispatch:
+    inputs:
+      epochs:
+        description: 'Number of training epochs'
+        required: true
+        default: '100'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  train:
+    name: Train SVHN CNN VAE
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build target
+        uses: Swatinem/rust-cache@v2
+
+      - name: Prepare SVHN Dataset
+        run: |
+          mkdir -p data/svhn
+          pip install --quiet scipy numpy
+          python3 -c "
+          import urllib.request, scipy.io, numpy as np, os
+          mat_path = 'data/svhn/train_32x32.mat'
+          bin_path = 'data/svhn/train_images.bin'
+          if not os.path.exists(bin_path):
+              if not os.path.exists(mat_path):
+                  print('Downloading Stanford SVHN dataset (~173 MB)...')
+                  urllib.request.urlretrieve('http://ufldl.stanford.edu/housenumbers/train_32x32.mat', mat_path)
+              print('Extracting train_images.bin...')
+              mat = scipy.io.loadmat(mat_path)
+              X = mat['X'].transpose(3, 0, 1, 2).astype(np.float32) / 255.0
+              X.tofile(bin_path)
+              print('Dataset ready.')
+          "
+
+      - name: Run VAE Training
+        run: |
+          RUSTFLAGS="-C target-cpu=native" cargo run --example svhn_vae --release -- ${{ inputs.epochs }}
+
+      - name: Convert PPM outputs to PNG
+        if: always()
+        run: |
+          mogrify -format png outputs/svhn_cnn_vae/*.ppm 2>/dev/null || true
+
+      - name: Upload Training Outputs & Checkpoints
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: svhn-vae-results
+          path: |
+            outputs/svhn_cnn_vae/
+            checkpoints/svhn_cnn_vae_*.rmlc
+          if-no-files-found: warn
