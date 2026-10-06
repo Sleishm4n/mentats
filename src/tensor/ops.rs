@@ -5,6 +5,8 @@
 //! strides rather than the data, meaning they are cheap
 use std::assert_eq;
 
+use rayon::{iter::{IndexedParallelIterator, ParallelIterator}, slice::ParallelSliceMut};
+
 use crate::tensor::Tensor;
 
 impl Tensor {
@@ -15,6 +17,8 @@ impl Tensor {
     /// Panics if the shapes differ
     pub fn add(&self, other: &Tensor) -> Tensor {
         self.zip_map(other, |a, b| a + b)
+
+        // self.data.iter().zip(&other.data).map(|(&a, &b)| a + b).collect()
     }
 
     /// Elementwise subtraction (`self - other`). Both tensors must have the same shape
@@ -88,21 +92,21 @@ impl Tensor {
         let c_data = &mut c.data;
 
         if o_j == 1 {
-            for i in 0..m {
-                let a_row_offset = i * s_i;
-                let c_row_offset = i * p;
-                let c_slice = &mut c_data[c_row_offset..c_row_offset + p];
-
-                for k in 0..n {
-                    let a_val = a_data[a_row_offset + k * s_k];
-                    let b_row_offset = k * o_k;
-                    let b_slice = &b_data[b_row_offset..b_row_offset + p];
-
-                    for (c_val, &b_val) in c_slice.iter_mut().zip(b_slice.iter()) {
-                        *c_val += a_val * b_val;
+            let p = other.shape[1];
+            c_data
+                .par_chunks_mut(p)
+                .enumerate()
+                .for_each(|(i, c_slice)| {
+                    let a_row_offset = i * s_i;
+                    for k in 0..n {
+                        let a_val = a_data[a_row_offset + k * s_k];
+                        let b_row_offset = k * o_k;
+                        let b_slice = &b_data[b_row_offset..b_row_offset + p];
+                        for (c_val, &b_val) in c_slice.iter_mut().zip(b_slice.iter()) {
+                            *c_val += a_val * b_val;
+                        }
                     }
-                }
-            }
+                });
         } else {
             for i in 0..m {
                 let a_row_offset = i * s_i;
