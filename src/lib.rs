@@ -42,3 +42,4 @@ pub mod tensor;
 pub mod utils;
 
 pub use tensor::core::Tensor;
+pub use utils::metrics::MetricsLogger;

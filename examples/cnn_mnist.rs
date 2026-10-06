@@ -36,6 +36,17 @@ fn main() {
 
     println!("Initial loss: {}", loss);
 
+    let mut logger = mentats::utils::metrics::MetricsLogger::new(
+        "cnn_mnist",
+        "CNN classifier",
+        "MNIST",
+        "classification",
+        "Conv2D(1→8, 3x3) → ReLU → MaxPool → Linear(1352→10)",
+        "Adam (lr 0.001)",
+    );
+
+    logger.set_init_loss(loss);
+
     for epoch in 0..epochs {
         let mut total_loss: f32 = 0.0;
         let mut correct = 0;
@@ -78,11 +89,16 @@ fn main() {
             }
         }
 
+        let epoch_loss = total_loss / images.len() as f32;
+        let epoch_acc = correct as f32 / images.len() as f32 * 100.0;
+        let elapsed = start.elapsed();
+        logger.log_epoch(epoch, epoch_loss, Some(epoch_acc), elapsed.as_secs_f32());
+
         println!(
             "Epoch {epoch}: loss = {:.4}, accuracy = {:.2}%, elapsed = {:?}",
-            total_loss / images.len() as f32,
-            correct as f32 / images.len() as f32 * 100.0,
-            start.elapsed()
+            epoch_loss,
+            epoch_acc,
+            elapsed
         );
     }
     let mut correct = 0;
@@ -106,6 +122,11 @@ fn main() {
     let accuracy = correct as f32 / test_images.len() as f32 * 100.0;
 
     println!("Test accuracy: {:.2}%", accuracy);
+
+    logger.set_test_accuracy(accuracy);
+    if let Err(e) = logger.save_to_json("outputs/cnn_mnist/metrics.json") {
+        eprintln!("Warning: failed to save metrics: {e}");
+    }
 
     let checkpoint_path = "checkpoints/cnn_mnist_classifier.rmlc";
     create_dir_all("checkpoints").expect("failed to create checkpoints directory");
