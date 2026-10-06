@@ -96,9 +96,7 @@ fn main() {
 
         println!(
             "Epoch {epoch}: loss = {:.4}, accuracy = {:.2}%, elapsed = {:?}",
-            epoch_loss,
-            epoch_acc,
-            elapsed
+            epoch_loss, epoch_acc, elapsed
         );
     }
     let mut correct = 0;
