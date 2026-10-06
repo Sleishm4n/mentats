@@ -124,7 +124,7 @@ impl Conv2DLayer {
                 let out_h = h_in - kh + 1;
                 let out_w = w_in - kw + 1;
 
-                let x_col = self.im2col(input);
+                let x_col = self.im2col(&input.data, h_in, w_in);
 
                 let y_2d = w_2d.matmul(&x_col);
 
@@ -170,10 +170,8 @@ impl Conv2DLayer {
 
                 for b in 0..batch_size {
                     let in_start = b * in_sample_size;
-                    let sample_data = input.data[in_start..in_start + in_sample_size].to_vec();
-                    let sample = Tensor::from_vec(vec![self.in_channels, h_in, w_in], sample_data);
-
-                    let x_col = self.im2col(&sample);
+                    let sample_slice = &input.data[in_start..in_start + in_sample_size];
+                    let x_col = self.im2col(sample_slice, h_in, w_in);
                     let mut y_2d = w_2d.matmul(&x_col);
 
                     for oc in 0..self.out_channels {
@@ -454,7 +452,9 @@ impl Conv2DLayer {
                 let out_h = d_output.shape[1];
                 let out_w = d_output.shape[2];
 
-                let x_col = self.im2col(input);
+                let h_in = input.shape[1];
+                let w_in = input.shape[2];
+                let x_col = self.im2col(&input.data, h_in, w_in);
                 let x_col_t = x_col.transpose();
 
                 let d_out_2d = Tensor::from_vec(
@@ -483,12 +483,9 @@ impl Conv2DLayer {
 
                 for b in 0..batch_size {
                     let in_start = b * in_sample_size;
-                    let sample = Tensor::from_vec(
-                        vec![self.in_channels, h_in, w_in],
-                        input.data[in_start..in_start + in_sample_size].to_vec(),
-                    );
+                    let sample_slice = &input.data[in_start..in_start + in_sample_size];
+                    let x_col = self.im2col(sample_slice, h_in, w_in);
 
-                    let x_col = self.im2col(&sample);
                     let x_col_t = x_col.transpose();
 
                     let out_start = b * out_sample_size;
@@ -834,11 +831,9 @@ impl Conv2DLayer {
     }
 
     /// Unfolds spatial receptive fields of a 3D tensor into a 2D matrix.
-    pub fn im2col(&self, input: &Tensor) -> Tensor {
+    pub fn im2col(&self, input_data: &[f32], h_in: usize, w_in: usize) -> Tensor {
         let (kh, kw) = self.kernel_size;
         let in_channels = self.in_channels;
-        let h_in = input.shape[1];
-        let w_in = input.shape[2];
 
         let out_h = h_in - kh + 1;
         let out_w = w_in - kw + 1;
@@ -861,7 +856,7 @@ impl Conv2DLayer {
                             let row_idx = ic * (kh * kw) + ki * kw + kj;
                             let in_idx = ic * in_stride_c + (i + ki) * in_stride_h + (j + kj);
 
-                            col.data[row_idx * n + col_idx] = input.data[in_idx];
+                            col.data[row_idx * n + col_idx] = input_data[in_idx];
                         }
                     }
                 }

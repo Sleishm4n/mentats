@@ -15,6 +15,8 @@ impl Tensor {
     /// Panics if the shapes differ
     pub fn add(&self, other: &Tensor) -> Tensor {
         self.zip_map(other, |a, b| a + b)
+
+        // self.data.iter().zip(&other.data).map(|(&a, &b)| a + b).collect()
     }
 
     /// Elementwise subtraction (`self - other`). Both tensors must have the same shape
