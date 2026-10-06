@@ -179,6 +179,15 @@ fn main() {
     println!("CNN Conditional VAE Training on MNIST (60,000 samples)");
     println!("==========================================================\n");
 
+    let mut logger = mentats::utils::metrics::MetricsLogger::new(
+        "batched_cnn_cvae",
+        "Batched CNN CVAE",
+        "MNIST",
+        "generative",
+        "ConvEncoder -> DenseLatentHead(10) -> ConvDecoder",
+        "Adam (lr 0.001)",
+    );
+
     let batches_per_epoch = images.len().div_ceil(batch_size);
     let total_warmup_steps = (total_warmup_epochs * batches_per_epoch as f32) as usize;
 
@@ -277,13 +286,30 @@ fn main() {
         let epoch_end_step = (epoch + 1) * batches_per_epoch;
         let beta_logged = (epoch_end_step as f32 / total_warmup_steps as f32).min(1.0) * beta_max;
 
+        let avg_loss = total_loss / batch_count as f32;
+        let avg_recon = total_recon / batch_count as f32;
+        let avg_kl = total_kl / batch_count as f32;
+        let elapsed = start.elapsed();
+
+        logger.log_epoch_with_extra(
+            epoch,
+            avg_loss,
+            None,
+            elapsed.as_secs_f32(),
+            vec![
+                ("recon_loss", avg_recon),
+                ("kl_loss", avg_kl),
+                ("beta", beta_logged),
+            ],
+        );
+
         println!(
             "\n>>> Epoch {} finished in {:?}: Loss = {:.4} (Recon = {:.4}, KL = {:.4}, Beta = {:.4})\n",
             epoch,
-            start.elapsed(),
-            total_loss / batch_count as f32,
-            total_recon / batch_count as f32,
-            total_kl / batch_count as f32,
+            elapsed,
+            avg_loss,
+            avg_recon,
+            avg_kl,
             beta_logged,
         );
 
@@ -350,4 +376,8 @@ fn main() {
         "Saved full 4x4 multi-class showcase grid to {}",
         showcase_path.display()
     );
+
+    if let Err(e) = logger.save_to_json(output_dir.join("metrics.json")) {
+        eprintln!("Warning: failed to save metrics: {e}");
+    }
 }
