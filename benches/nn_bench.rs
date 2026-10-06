@@ -89,5 +89,11 @@ fn bench_conv_comp(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_matmul_comp, bench_matmul_var, bench_conv, bench_conv_comp);
+criterion_group!(
+    benches,
+    bench_matmul_comp,
+    bench_matmul_var,
+    bench_conv,
+    bench_conv_comp
+);
 criterion_main!(benches);

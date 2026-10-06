@@ -454,7 +454,6 @@ impl Conv2DLayer {
 
                 let h_in = input.shape[1];
                 let w_in = input.shape[2];
-                
                 let x_col = self.im2col(&input.data, h_in, w_in);
                 let x_col_t = x_col.transpose();
 
@@ -486,7 +485,7 @@ impl Conv2DLayer {
                     let in_start = b * in_sample_size;
                     let sample_slice = &input.data[in_start..in_start + in_sample_size];
                     let x_col = self.im2col(sample_slice, h_in, w_in);
-                    
+
                     let x_col_t = x_col.transpose();
 
                     let out_start = b * out_sample_size;
