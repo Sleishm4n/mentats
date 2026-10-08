@@ -1,4 +1,4 @@
-use criterion::{Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use mentats::nn::conv::Conv2DLayer;
 use mentats::tensor::Tensor;
 
