@@ -89,11 +89,32 @@ fn bench_conv_comp(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_matmul_batched_64(c: &mut Criterion) {
+    let mut group = c.benchmark_group("matmul_batched_comp");
+
+    let batch_size = 32;
+    let size = 64;
+    let values = vec![0.5; batch_size * size * size];
+    let a = Tensor::from_vec(vec![batch_size, size, size], values.clone());
+    let b = Tensor::from_vec(vec![size, size], vec![0.5; size * size]);
+
+    group.bench_function("batched", |bencher| {
+        bencher.iter(|| black_box(a.matmul_batched(black_box(&b))));
+    });
+
+    group.bench_function("serialised", |bencher| {
+        bencher.iter(|| black_box(a.matmul_batched_serial(black_box(&b))));
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_matmul_comp,
     bench_matmul_var,
     bench_conv,
-    bench_conv_comp
+    bench_conv_comp,
+    bench_matmul_batched_64
 );
 criterion_main!(benches);
