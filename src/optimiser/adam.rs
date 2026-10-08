@@ -52,6 +52,39 @@ impl Adam {
             v: vec![],
         }
     }
+
+    fn _step_naive(&mut self, params: &mut Vec<Tensor>, grads: &[Tensor]) {
+        if self.m.is_empty() {
+            self.m = params
+                .iter()
+                .map(|p| Tensor::new(p.shape.clone()))
+                .collect();
+            self.v = params
+                .iter()
+                .map(|p| Tensor::new(p.shape.clone()))
+                .collect();
+        }
+
+        self.t += 1;
+
+        for i in 0..params.len() {
+            self.m[i] = self.m[i]
+                .scale(self.beta1)
+                .add(&grads[i].scale(1.0 - self.beta1));
+            self.v[i] = self.v[i]
+                .scale(self.beta2)
+                .add(&grads[i].elementwise_square().scale(1.0 - self.beta2));
+
+            let m_hat = self.m[i].scale(1.0 / (1.0 - self.beta1.powi(self.t as i32)));
+            let v_hat = self.v[i].scale(1.0 / (1.0 - self.beta2.powi(self.t as i32)));
+
+            params[i] = params[i].sub(
+                &m_hat.zip_map(&v_hat.map(|x: f32| x.powf(0.5) + self.epsilon), |m, v| {
+                    self.alpha * m / v
+                }),
+            );
+        }
+    }
 }
 
 impl Optimiser for Adam {
@@ -72,21 +105,31 @@ impl Optimiser for Adam {
                 .map(|p| Tensor::new(p.shape.clone()))
                 .collect();
         }
+
         self.t += 1;
+
+        let beta1_corr = 1.0 - self.beta1.powi(self.t as i32);
+        let beta2_corr = 1.0 - self.beta2.powi(self.t as i32);
+        let one_minus_b1 = 1.0 - self.beta1;
+        let one_minus_b2 = 1.0 - self.beta2;
+
         for i in 0..params.len() {
-            self.m[i] = self.m[i]
-                .scale(self.beta1)
-                .add(&grads[i].scale(1.0 - self.beta1));
-            self.v[i] = self.v[i]
-                .scale(self.beta2)
-                .add(&grads[i].elementwise_square().scale(1.0 - self.beta2));
-            let m_hat = self.m[i].scale(1.0 / (1.0 - self.beta1.powi(self.t as i32)));
-            let v_hat = self.v[i].scale(1.0 / (1.0 - self.beta2.powi(self.t as i32)));
-            params[i] = params[i].sub(
-                &m_hat.zip_map(&v_hat.map(|x: f32| x.powf(0.5) + self.epsilon), |m, v| {
-                    self.alpha * m / v
-                }),
-            );
+            let p_data = &mut params[i].data;
+            let g_data = &grads[i].data;
+            let m_data = &mut self.m[i].data;
+            let v_data = &mut self.v[i].data;
+
+            for j in 0..p_data.len() {
+                let g = g_data[j];
+
+                m_data[j] = self.beta1 * m_data[j] + one_minus_b1 * g;
+                v_data[j] = self.beta2 * v_data[j] + one_minus_b2 * g * g;
+
+                let m_hat = m_data[j] / beta1_corr;
+                let v_hat = v_data[j] / beta2_corr;
+
+                p_data[j] -= self.alpha * m_hat / (v_hat.sqrt() + self.epsilon);
+            }
         }
     }
 }
