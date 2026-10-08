@@ -4,6 +4,11 @@
 //! `[in_channels, height, width] -> [out_channels, out_h, out_w]`.
 use std::io::{self, Read};
 
+use rayon::{
+    iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator},
+    slice::ParallelSliceMut,
+};
+
 use crate::{
     nn::{init::kaiming_normal_conv, Layer},
     utils::model_io::{read_tensor, write_tensor, write_u8, TAG_CONV2D},
@@ -168,23 +173,42 @@ impl Conv2DLayer {
                 let out_sample_size = self.out_channels * out_h * out_w;
                 let spatial_size = out_h * out_w;
 
-                for b in 0..batch_size {
-                    let in_start = b * in_sample_size;
-                    let sample_slice = &input.data[in_start..in_start + in_sample_size];
-                    let x_col = self.im2col(sample_slice, h_in, w_in);
-                    let mut y_2d = w_2d.matmul(&x_col);
+                if batch_size < 5 {
+                    for b in 0..batch_size {
+                        let in_start = b * in_sample_size;
+                        let sample_slice = &input.data[in_start..in_start + in_sample_size];
+                        let x_col = self.im2col(sample_slice, h_in, w_in);
+                        let mut y_2d = w_2d.matmul(&x_col);
 
-                    for oc in 0..self.out_channels {
-                        let bias_val = self.bias.data[oc];
-                        let start = oc * spatial_size;
-                        for val in &mut y_2d.data[start..start + spatial_size] {
-                            *val += bias_val;
+                        for oc in 0..self.out_channels {
+                            let bias_val = self.bias.data[oc];
+                            let start = oc * spatial_size;
+                            for val in &mut y_2d.data[start..start + spatial_size] {
+                                *val += bias_val;
+                            }
                         }
-                    }
 
-                    let out_start = b * out_sample_size;
-                    output.data[out_start..out_start + out_sample_size]
-                        .copy_from_slice(&y_2d.data);
+                        let out_start = b * out_sample_size;
+                        output.data[out_start..out_start + out_sample_size]
+                            .copy_from_slice(&y_2d.data);
+                    }
+                } else {
+                    output.data.par_chunks_mut(out_sample_size).enumerate().for_each(|(b, out_chunk)| {
+                        let in_start = b * in_sample_size;
+                        let sample_slice = &input.data[in_start..in_start + in_sample_size];
+                        let x_col = self.im2col(sample_slice, h_in, w_in);
+                        let mut y_2d = w_2d.matmul_serial(&x_col);
+
+                        for oc in 0..self.out_channels {
+                            let bias_val = self.bias.data[oc];
+                            let start = oc * spatial_size;
+                            for val in &mut y_2d.data[start..start + spatial_size] {
+                                *val += bias_val;
+                            }
+                        }
+
+                        out_chunk.copy_from_slice(&y_2d.data);
+                    });
                 }
 
                 output
@@ -481,26 +505,55 @@ impl Conv2DLayer {
 
                 let mut d_weight = Tensor::new(vec![self.out_channels, self.in_channels, kh, kw]);
 
-                for b in 0..batch_size {
-                    let in_start = b * in_sample_size;
-                    let sample_slice = &input.data[in_start..in_start + in_sample_size];
-                    let x_col = self.im2col(sample_slice, h_in, w_in);
+                if batch_size < 5 {
+                    for b in 0..batch_size {
+                        let in_start = b * in_sample_size;
+                        let sample_slice = &input.data[in_start..in_start + in_sample_size];
+                        let x_col = self.im2col(sample_slice, h_in, w_in);
 
-                    let x_col_t = x_col.transpose();
+                        let x_col_t = x_col.transpose();
 
-                    let out_start = b * out_sample_size;
-                    let d_out_sample = Tensor::from_vec(
-                        vec![self.out_channels, out_h * out_w],
-                        d_output.data[out_start..out_start + out_sample_size].to_vec(),
-                    );
+                        let out_start = b * out_sample_size;
+                        let d_out_sample = Tensor::from_vec(
+                            vec![self.out_channels, out_h * out_w],
+                            d_output.data[out_start..out_start + out_sample_size].to_vec(),
+                        );
 
-                    let d_w_sample = d_out_sample.matmul(&x_col_t);
+                        let d_w_sample = d_out_sample.matmul(&x_col_t);
 
-                    for (dw, &val) in d_weight.data.iter_mut().zip(&d_w_sample.data) {
-                        *dw += val;
+                        for (dw, &val) in d_weight.data.iter_mut().zip(&d_w_sample.data) {
+                            *dw += val;
+                        }
                     }
-                }
+                } else {
+                    let d_weight_data = (0..batch_size).into_par_iter().map(|b| {
+                        let in_start = b * in_sample_size;
+                        let sample_slice = &input.data[in_start..in_start + in_sample_size];
+                        let x_col = self.im2col(sample_slice, h_in, w_in);
 
+                        let x_col_t = x_col.transpose();
+
+                        let out_start = b * out_sample_size;
+                        let d_out_sample = Tensor::from_vec(
+                            vec![self.out_channels, out_h * out_w],
+                            d_output.data[out_start..out_start + out_sample_size].to_vec(),
+                        );
+                        d_out_sample.matmul_serial(&x_col_t).data
+                    }).reduce(
+                        || vec![0.0f32; self.out_channels * self.in_channels * kh * kw],
+                        |mut acc, sample| {
+                                for (a, s) in acc.iter_mut().zip(sample.iter()) {
+                                    *a += s;
+                                }
+                                acc
+                            },
+                        );
+
+                    d_weight = Tensor::from_vec(
+                        vec![self.out_channels, self.in_channels, kh, kw],
+                        d_weight_data,
+                    );
+                }
                 d_weight
             }
             _ => panic!("Conv2DLayer expects 3D [channels, height, width] or 4D [batch, channels, height, width]"),
@@ -681,22 +734,39 @@ impl Conv2DLayer {
                 let in_sample_size = self.in_channels * h_in * w_in;
                 let out_sample_size = self.out_channels * out_h * out_w;
 
-                for b in 0..batch_size {
+                if batch_size < 5 {
+                    for b in 0..batch_size {
 
-                    let out_start = b * out_sample_size;
-                    let d_out_sample = Tensor::from_vec(
-                        vec![self.out_channels, out_h * out_w],
-                        d_output.data[out_start..out_start + out_sample_size].to_vec(),
-                    );
+                        let out_start = b * out_sample_size;
+                        let d_out_sample = Tensor::from_vec(
+                            vec![self.out_channels, out_h * out_w],
+                            d_output.data[out_start..out_start + out_sample_size].to_vec(),
+                        );
 
-                    let d_x_col = w_2d_t.matmul(&d_out_sample);
+                        let d_x_col = w_2d_t.matmul(&d_out_sample);
 
-                    let d_input_sample = self.col2im(&d_x_col, h_in, w_in);
+                        let d_input_sample = self.col2im(&d_x_col, h_in, w_in);
 
-                    let in_start = b * in_sample_size;
-                    d_input.data[in_start..in_start + in_sample_size]
-                        .copy_from_slice(&d_input_sample.data);
+                        let in_start = b * in_sample_size;
+                        d_input.data[in_start..in_start + in_sample_size]
+                            .copy_from_slice(&d_input_sample.data);
+                    }
+                } else {
+                    d_input.data.par_chunks_mut(in_sample_size).enumerate().for_each(|(b, in_chunk)| {
+
+                        let out_start = b * out_sample_size;
+                        let d_out_sample = Tensor::from_vec(
+                            vec![self.out_channels, out_h * out_w],
+                            d_output.data[out_start..out_start + out_sample_size].to_vec(),
+                        );
+
+                        let d_x_col = w_2d_t.matmul_serial(&d_out_sample);
+
+                        let d_input_sample = self.col2im(&d_x_col, h_in, w_in);
+                        in_chunk.copy_from_slice(&d_input_sample.data);
+                    });
                 }
+
                 d_input
             }
             _ => panic!("Conv2DLayer expects 3D [channels, height, width] or 4D [batch, channels, height, width]"),
