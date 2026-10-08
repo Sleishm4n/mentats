@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use mentats::nn::conv::Conv2DLayer;
 use mentats::tensor::Tensor;
 
@@ -37,11 +37,21 @@ fn bench_matmul_comp(c: &mut Criterion) {
 }
 
 fn bench_matmul_var(c: &mut Criterion) {
-    let mut group = c.benchmark_group("matmul_varing_sizes");
+    let mut group = c.benchmark_group("matmul_varying_sizes");
 
     for size in [64, 128, 512] {
+        let flops = 2 * (size as u64).pow(3);
+        group.throughput(Throughput::Elements(flops));
+
+        if size == 512 {
+            group.sample_size(10);
+        } else {
+            group.sample_size(100);
+        }
+
         let a = Tensor::from_vec(vec![size, size], vec![0.5; size * size]);
         let b = Tensor::from_vec(vec![size, size], vec![0.5; size * size]);
+
         group.bench_function(format!("{size}x{size}_optimised"), |bencher| {
             bencher.iter(|| black_box(a.matmul(black_box(&b))));
         });
@@ -89,11 +99,35 @@ fn bench_conv_comp(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_matmul_batched_var(c: &mut Criterion) {
+    let mut group = c.benchmark_group("matmul_batched_sizes");
+
+    // Realistic deep learning batch/matrix configurations:
+    // 1. Small / edge of threshold: batch 16, 64x64 (~4.2M ops)
+    // 2. Medium training batch: batch 64, 64x64 (~16.8M ops)
+    // 3. Large MLP feature size: batch 64, 128x128 (~134M ops)
+    for (batch, size) in [(16, 64), (64, 64), (64, 128)] {
+        let a = Tensor::from_vec(vec![batch, size, size], vec![0.5; batch * size * size]);
+        let b = Tensor::from_vec(vec![size, size], vec![0.5; size * size]);
+
+        group.bench_function(format!("b{batch}_{size}x{size}_batched"), |bencher| {
+            bencher.iter(|| black_box(a.matmul_batched(black_box(&b))));
+        });
+
+        group.bench_function(format!("b{batch}_{size}x{size}_broadcast"), |bencher| {
+            bencher.iter(|| black_box(b.matmul_batched_broadcast(black_box(&a))));
+        });
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_matmul_comp,
     bench_matmul_var,
     bench_conv,
-    bench_conv_comp
+    bench_conv_comp,
+    bench_matmul_batched_var
 );
 criterion_main!(benches);
