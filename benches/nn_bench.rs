@@ -1,5 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use mentats::nn::conv::Conv2DLayer;
+use mentats::optimiser::adam::Adam;
+use mentats::optimiser::Optimiser;
 use mentats::tensor::Tensor;
 
 fn naive_matmul(a: &Tensor, b: &Tensor) -> Tensor {
@@ -122,12 +124,36 @@ fn bench_matmul_batched_var(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_adam(c: &mut Criterion) {
+    let mut group = c.benchmark_group("adam_step");
+
+    // Test a realistic layer parameter size (e.g. 100k weights, like 784 -> 128)
+    let size = 100_352;
+    group.throughput(Throughput::Elements(size as u64));
+
+    let mut adam = Adam::new(0.001, 0.9, 0.999, 1e-8);
+    let mut params = vec![Tensor::from_vec(vec![size], vec![0.5; size])];
+    let grads = vec![Tensor::from_vec(vec![size], vec![0.01; size])];
+
+    // Warmup so initial moment vectors are allocated
+    adam.step(&mut params, &grads);
+
+    group.bench_function("adam_100k_params", |bencher| {
+        bencher.iter(|| {
+            adam.step(black_box(&mut params), black_box(&grads));
+        });
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_matmul_comp,
     bench_matmul_var,
     bench_conv,
     bench_conv_comp,
-    bench_matmul_batched_var
+    bench_matmul_batched_var,
+    bench_adam
 );
 criterion_main!(benches);
