@@ -6,6 +6,11 @@
 //! the forward and backwards passes need
 use crate::tensor::Tensor;
 
+use rayon::{
+    iter::{IndexedParallelIterator, ParallelIterator},
+    slice::ParallelSliceMut,
+};
+
 impl Tensor {
     /// Batched matrix multiply: `[batch, m, n] @ [n, p] -> [batch, m, p]`
     ///
@@ -17,6 +22,88 @@ impl Tensor {
     /// Panics if `self` if not rank 3, `other` is not rank 2, ot the inner dims
     /// don't match
     pub fn matmul_batched(&self, other: &Tensor) -> Tensor {
+        assert!(
+            self.shape.len() == 3 && other.shape.len() == 2,
+            "batched matmul expects [batch, m, n] @ [n, p] -> [batch, m, p]"
+        );
+
+        let batch_size = self.shape[0];
+        let m = self.shape[1];
+        let n = self.shape[2];
+        let p = other.shape[1];
+
+        assert_eq!(n, other.shape[0], "dimension mismatch for matmul");
+
+        const PARALLEL_THRESHOLD: usize = 128 * 128 * 128; // ~2M ops
+
+        if batch_size * m * n * p < PARALLEL_THRESHOLD {
+            return self.matmul_batched_serial(other);
+        }
+
+        let mut result = Tensor::new(vec![batch_size, m, p]);
+
+        let s_b = self.strides[0];
+        let s_i = self.strides[1];
+        let s_k = self.strides[2];
+        let o_k = other.strides[0];
+        let o_j = other.strides[1];
+
+        let a_data = &self.data;
+        let b_data = &other.data;
+        let c_data = &mut result.data;
+
+        let res_stride_b = m * p;
+        let res_stride_i = p;
+
+        if o_j == 1 {
+            c_data
+                .par_chunks_mut(m * p)
+                .enumerate()
+                .for_each(|(b, c_batch)| {
+                    let a_b_offset = b * s_b;
+
+                    for i in 0..m {
+                        let a_row_offset = a_b_offset + i * s_i;
+                        let c_row_offset = i * p;
+
+                        let c_slice = &mut c_batch[c_row_offset..c_row_offset + p];
+
+                        for k in 0..n {
+                            let a_val = a_data[a_row_offset + k * s_k];
+                            let b_row_offset = k * o_k;
+                            let b_slice = &b_data[b_row_offset..b_row_offset + p];
+
+                            for (c_val, &b_val) in c_slice.iter_mut().zip(b_slice.iter()) {
+                                *c_val += a_val * b_val;
+                            }
+                        }
+                    }
+                });
+        } else {
+            for b in 0..batch_size {
+                let a_b_offset = b * s_b;
+                let c_b_offset = b * res_stride_b;
+
+                for i in 0..m {
+                    let a_row_offset = a_b_offset + i * s_i;
+                    let c_row_offset = c_b_offset + i * res_stride_i;
+
+                    for k in 0..n {
+                        let a_val = a_data[a_row_offset + k * s_k];
+                        let b_row_offset = k * o_k;
+
+                        for j in 0..p {
+                            c_data[c_row_offset + j] += a_val * b_data[b_row_offset + j * o_j];
+                        }
+                    }
+                }
+            }
+        }
+
+        result
+    }
+
+    pub fn matmul_batched_serial(&self, other: &Tensor) -> Tensor {
         assert!(
             self.shape.len() == 3 && other.shape.len() == 2,
             "batched matmul expects [batch, m, n] @ [n, p] -> [batch, m, p]"
@@ -59,8 +146,8 @@ impl Tensor {
                         let b_row_offset = k * o_k;
                         let b_slice = &b_data[b_row_offset..b_row_offset + p];
 
-                        for j in 0..p {
-                            c_slice[j] += a_val * b_slice[j];
+                        for (c_val, &b_val) in c_slice.iter_mut().zip(b_slice.iter()) {
+                            *c_val += a_val * b_val;
                         }
                     }
                 }
@@ -112,6 +199,88 @@ impl Tensor {
 
         assert_eq!(n, other.shape[1], "dimension mismatch for matmul");
 
+        const PARALLEL_THRESHOLD: usize = 128 * 128 * 128; // ~2M ops
+
+        if batch_size * m * n * p < PARALLEL_THRESHOLD {
+            return self.matmul_batched_broadcast_serial(other);
+        }
+
+        let mut result = Tensor::new(vec![batch_size, m, p]);
+
+        let s_i = self.strides[0];
+        let s_k = self.strides[1];
+        let o_b = other.strides[0];
+        let o_k = other.strides[1];
+        let o_j = other.strides[2];
+
+        let a_data = &self.data;
+        let b_data = &other.data;
+        let c_data = &mut result.data;
+
+        let res_stride_b = m * p;
+        let res_stride_i = p;
+
+        if o_j == 1 {
+            c_data
+                .par_chunks_mut(m * p)
+                .enumerate()
+                .for_each(|(b, c_batch)| {
+                    let b_b_offset = b * o_b;
+
+                    for i in 0..m {
+                        let a_row_offset = i * s_i;
+                        let c_row_offset = i * p;
+
+                        let c_slice = &mut c_batch[c_row_offset..c_row_offset + p];
+
+                        for k in 0..n {
+                            let a_val = a_data[a_row_offset + k * s_k];
+                            let b_row_offset = b_b_offset + k * o_k;
+                            let b_slice = &b_data[b_row_offset..b_row_offset + p];
+
+                            for (c_val, &b_val) in c_slice.iter_mut().zip(b_slice.iter()) {
+                                *c_val += a_val * b_val;
+                            }
+                        }
+                    }
+                });
+        } else {
+            for b in 0..batch_size {
+                let b_batch_offset = b * o_b;
+                let c_b_offset = b * res_stride_b;
+
+                for i in 0..m {
+                    let a_row_offset = i * s_i;
+                    let c_row_offset = c_b_offset + i * res_stride_i;
+
+                    for k in 0..n {
+                        let a_val = a_data[a_row_offset + k * s_k];
+                        let b_row_offset = b_batch_offset + k * o_k;
+
+                        for j in 0..p {
+                            c_data[c_row_offset + j] += a_val * b_data[b_row_offset + j * o_j];
+                        }
+                    }
+                }
+            }
+        }
+
+        result
+    }
+
+    pub fn matmul_batched_broadcast_serial(&self, other: &Tensor) -> Tensor {
+        assert!(
+            self.shape.len() == 2 && other.shape.len() == 3,
+            "broadcast matmul expects [m, n] @ [batch, n, p] -> [batch, m, p]"
+        );
+
+        let batch_size = other.shape[0];
+        let m = self.shape[0];
+        let n = self.shape[1];
+        let p = other.shape[2];
+
+        assert_eq!(n, other.shape[1], "dimension mismatch for matmul");
+
         let mut result = Tensor::new(vec![batch_size, m, p]);
 
         let s_i = self.strides[0];
@@ -142,8 +311,8 @@ impl Tensor {
                         let b_row_offset = b_batch_offset + k * o_k;
                         let b_slice = &b_data[b_row_offset..b_row_offset + p];
 
-                        for j in 0..p {
-                            c_slice[j] += a_val * b_slice[j];
+                        for (c_val, &b_val) in c_slice.iter_mut().zip(b_slice.iter()) {
+                            *c_val += a_val * b_val;
                         }
                     }
                 }

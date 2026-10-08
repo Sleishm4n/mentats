@@ -5,6 +5,11 @@
 //! strides rather than the data, meaning they are cheap
 use std::assert_eq;
 
+use rayon::{
+    iter::{IndexedParallelIterator, ParallelIterator},
+    slice::ParallelSliceMut,
+};
+
 use crate::tensor::Tensor;
 
 impl Tensor {
@@ -62,7 +67,7 @@ impl Tensor {
         min
     }
 
-    /// 2D matric multiplication: `[m, n] @ [n, p] -> [m, p]`
+    /// 2D matrix multiplication: `[m, n] @ [n, p] -> [m, p]`
     ///
     /// For batched inputs use [`Tensor::matmul_batched`] or [`Tensor::matmul_batched_broadcast`]
     /// instead.
@@ -70,8 +75,67 @@ impl Tensor {
     /// # Panics
     ///
     /// Panics if `self` is not rank 2, or if the inner dims don't match
-    /// (`self.shape[1] != other.shape[1]`)
+    /// (`self.shape[1] != other.shape[0]`)
     pub fn matmul(&self, other: &Tensor) -> Tensor {
+        assert!(self.shape.len() == 2);
+        assert!(self.shape[1] == other.shape[0]);
+
+        const PARALLEL_THRESHOLD: usize = 128 * 128 * 128; // ~2M ops
+
+        let mut c = Tensor::new(vec![self.shape[0], other.shape[1]]);
+        let m = self.shape[0];
+        let n = self.shape[1];
+        let p = other.shape[1];
+
+        if m * n * p < PARALLEL_THRESHOLD {
+            return self.matmul_serial(other);
+        }
+
+        let s_i = self.strides[0];
+        let s_k = self.strides[1];
+        let o_k = other.strides[0];
+        let o_j = other.strides[1];
+
+        let a_data = &self.data;
+        let b_data = &other.data;
+        let c_data = &mut c.data;
+
+        if o_j == 1 {
+            c_data
+                .par_chunks_mut(p)
+                .enumerate()
+                .for_each(|(i, c_slice)| {
+                    let a_row_offset = i * s_i;
+                    for k in 0..n {
+                        let a_val = a_data[a_row_offset + k * s_k];
+                        let b_row_offset = k * o_k;
+                        let b_slice = &b_data[b_row_offset..b_row_offset + p];
+
+                        for (c_val, &b_val) in c_slice.iter_mut().zip(b_slice.iter()) {
+                            *c_val += a_val * b_val;
+                        }
+                    }
+                })
+        } else {
+            for i in 0..m {
+                let a_row_offset = i * s_i;
+                let c_row_offset = i * p;
+
+                for k in 0..n {
+                    let a_val = a_data[a_row_offset + k * s_k];
+                    let b_row_offset = k * o_k;
+
+                    for j in 0..p {
+                        c_data[c_row_offset + j] += a_val * b_data[b_row_offset + j * o_j];
+                    }
+                }
+            }
+        }
+        c
+    }
+
+    /// Deprecated matmul before threading
+    pub fn matmul_serial(&self, other: &Tensor) -> Tensor {
         assert!(self.shape.len() == 2);
         assert!(self.shape[1] == other.shape[0]);
 
